@@ -1,0 +1,10 @@
+# Redocly lint สำหรับ contracts/openapi.yaml — recommended-strict: warning นับเป็น error
+extends:
+  - recommended-strict
+rules:
+  # repo ส่วนตัว ยังไม่กำหนด license
+  info-license: off
+  # /health ไม่มีกรณี 4xx (ไม่รับ input และไม่ต้องยืนยันตัวตน)
+  operation-4xx-response: off
+  # servers มี localhost:4000 โดยตั้งใจ (Backend ในเครื่องผ่าน docker compose)
+  no-server-example.com: off

@@ -1,0 +1,886 @@
+openapi: 3.1.0
+info:
+  title: Wang-Raan Backend API
+  version: 1.1.0
+  summary: สัญญา API ระหว่าง BFF (Next.js) กับ Backend (TypeScript)
+  description: |
+    สัญญานี้คือ "ข้อตกลง" ที่ BFF ใช้เรียก Backend — Backend ต้องทำตามทุก endpoint
+    อ่านคู่มือฉบับเต็มที่ `contracts/README.md`
+
+    **ใครเรียก:** BFF เท่านั้น (เบราว์เซอร์ไม่เรียก Backend ตรง)
+
+    **การยืนยันตัวตน:** ทุก request (ยกเว้น `/health`) มี `Authorization: Bearer <internal token>`
+    เป็น JWT HS256 ที่ BFF เซ็นด้วย `INTERNAL_TOKEN_SECRET`
+    - `iss` = `wang-raan-bff`, `aud` = `wang-raan-backend`, อายุ ≤ 300 วินาที
+    - `sub` = id ผู้ใช้ (`guest-<uuid>` หรือ `<provider>-<providerAccountId>`)
+      หรือค่า `anonymous` สำหรับคำขอที่ไม่มีผู้ใช้ล็อกอิน
+    - endpoint ที่ยอมรับ `anonymous` มี `x-allow-anonymous: true` — endpoint อื่นต้องตอบ 401 เมื่อ `sub` เป็น `anonymous`
+
+    **ความเป็นเจ้าของ:** ข้อมูลทุกชิ้นผูกกับ `sub` — ผังหรือลิงก์แชร์ของคนอื่นต้องตอบ 404 (ไม่ใช่ 403) เพื่อไม่เปิดเผยว่ามีอยู่
+
+    **ตรวจผังซ้ำ:** Backend ต้อง parse body ด้วย `StoreLayoutSchema` และคำนวณผลตรวจใหม่ด้วย `validateLayout()`
+    จาก `@bosskantaponguttarawichien-boop/wang-raan-core` เสมอ — schema ในไฟล์นี้ใช้เป็นเอกสาร/ตรวจเบื้องต้น เพราะ JSON Schema ตรวจบางกฎไม่ได้ (เช่น id ซ้ำ)
+servers:
+  - url: http://localhost:4000
+    description: Backend ในเครื่อง (docker compose)
+  - url: "https://{backendHost}"
+    description: Staging / Production บน Railway
+    variables:
+      backendHost:
+        default: api-staging.wangraan.invalid
+        description: โดเมนของ Backend (ตั้งตอน deploy — feat-044)
+security:
+  - internalToken: []
+tags:
+  - name: system
+    description: สถานะระบบ
+  - name: layouts
+    description: ผังร้านของผู้ใช้
+  - name: shares
+    description: ลิงก์แชร์แบบอ่านอย่างเดียว (snapshot ตอนกดแชร์)
+  - name: contact
+    description: ข้อความจากฟอร์มติดต่อ
+  - name: account
+    description: บัญชีผู้ใช้และ PDPA
+
+paths:
+  /health:
+    get:
+      tags: [system]
+      operationId: getHealth
+      summary: ตรวจว่า Backend และฐานข้อมูลพร้อมใช้งาน
+      security: []
+      responses:
+        "200":
+          description: พร้อมใช้งาน
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+        "503":
+          description: ฐานข้อมูลไม่พร้อม
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+
+  /v1/layouts:
+    get:
+      tags: [layouts]
+      operationId: listLayouts
+      summary: รายการผังของผู้ใช้ (ใหม่สุดก่อน เรียงตาม updatedAt)
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      responses:
+        "5XX": { $ref: "#/components/responses/ServerError" }
+        "200":
+          description: รายการสรุปผัง
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [layouts]
+                properties:
+                  layouts:
+                    type: array
+                    maxItems: 200
+                    items: { $ref: "#/components/schemas/LayoutSummary" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+    post:
+      tags: [layouts]
+      operationId: createLayout
+      summary: บันทึกผังใหม่
+      description: |
+        Backend ต้องตรวจผังซ้ำ — ผลตรวจ Blocked ตอบ 422 และไม่บันทึก
+        id ผังไม่ซ้ำ "ภายในผู้ใช้คนเดียวกัน" (ผู้ใช้ต่างคนใช้ id เดียวกันได้)
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SaveLayoutRequest" }
+      responses:
+        "5XX": { $ref: "#/components/responses/ServerError" }
+        "201":
+          description: บันทึกแล้ว
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StoredLayout" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409":
+          description: "`LAYOUT_EXISTS` มีผัง id นี้แล้ว (ใช้ PUT) หรือ `LAYOUT_LIMIT_REACHED` ผู้ใช้มีผังครบ 200 ผังแล้ว"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "422": { $ref: "#/components/responses/LayoutBlocked" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /v1/layouts/{layoutId}:
+    parameters:
+      - $ref: "#/components/parameters/LayoutId"
+      - $ref: "#/components/parameters/RequestId"
+    get:
+      tags: [layouts]
+      operationId: getLayout
+      summary: เปิดผังของผู้ใช้
+      responses:
+        "5XX": { $ref: "#/components/responses/ServerError" }
+        "200":
+          description: ผังพร้อมผลตรวจล่าสุด
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StoredLayout" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+    put:
+      tags: [layouts]
+      operationId: updateLayout
+      summary: บันทึกทับผังเดิม
+      description: "`layout.id` ใน body ต้องตรงกับ `layoutId` ใน path (ไม่ตรง = 400 `ID_MISMATCH`)"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SaveLayoutRequest" }
+      responses:
+        "5XX": { $ref: "#/components/responses/ServerError" }
+        "200":
+          description: บันทึกแล้ว (`createdAt` คงเดิม, `updatedAt` ใหม่)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StoredLayout" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "422": { $ref: "#/components/responses/LayoutBlocked" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+    delete:
+      tags: [layouts]
+      operationId: deleteLayout
+      summary: ลบผัง — ลิงก์แชร์ทุกอันของผังนี้ถูกยกเลิกไปด้วย
+      responses:
+        "5XX": { $ref: "#/components/responses/ServerError" }
+        "204": { description: ลบแล้ว }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /v1/layouts/{layoutId}/shares:
+    parameters:
+      - $ref: "#/components/parameters/LayoutId"
+      - $ref: "#/components/parameters/RequestId"
+    get:
+      tags: [shares]
+      operationId: listShares
+      summary: ลิงก์แชร์ทั้งหมดของผัง (รวมที่ยกเลิก/หมดอายุ ใหม่สุดก่อน)
+      responses:
+        "5XX": { $ref: "#/components/responses/ServerError" }
+        "200":
+          description: รายการลิงก์
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [shares]
+                properties:
+                  shares:
+                    type: array
+                    items: { $ref: "#/components/schemas/ShareLink" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+    post:
+      tags: [shares]
+      operationId: createShare
+      summary: สร้างลิงก์แชร์จากผังที่บันทึกแล้ว
+      description: |
+        เก็บ "สำเนา" ของผังและผลตรวจ ณ ตอนนี้ (snapshot) — แก้ผังภายหลังไม่กระทบลิงก์เดิม
+        `shareKey` สุ่มจาก CSPRNG 32 ไบต์ เข้ารหัส base64url (43 ตัวอักษร)
+        ผังที่ผลตรวจล่าสุดเป็น Blocked ตอบ 422 `LAYOUT_BLOCKED`
+        ลิงก์ที่ยังใช้งานได้ต่อผังสูงสุด 20 ลิงก์ (เกิน = 409 `SHARE_LIMIT_REACHED`)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateShareRequest" }
+      responses:
+        "5XX": { $ref: "#/components/responses/ServerError" }
+        "201":
+          description: สร้างแล้ว
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ShareLink" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: "`SHARE_LIMIT_REACHED`"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "422": { $ref: "#/components/responses/LayoutBlocked" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /v1/shares/{shareKey}:
+    parameters:
+      - $ref: "#/components/parameters/ShareKey"
+      - $ref: "#/components/parameters/RequestId"
+    patch:
+      tags: [shares]
+      operationId: updateShare
+      summary: เปลี่ยนวันหมดอายุของลิงก์ (เจ้าของเท่านั้น)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateShareRequest" }
+      responses:
+        "5XX": { $ref: "#/components/responses/ServerError" }
+        "200":
+          description: อัปเดตแล้ว
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ShareLink" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "410": { $ref: "#/components/responses/ShareGone" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+    delete:
+      tags: [shares]
+      operationId: revokeShare
+      summary: ยกเลิกลิงก์ (เจ้าของเท่านั้น, เรียกซ้ำได้ผลเหมือนเดิม)
+      description: ตั้ง `revokedAt` — ไม่ลบแถวทิ้ง เพื่อให้หน้าแชร์ตอบ 410 ได้ถูกต้อง
+      responses:
+        "5XX": { $ref: "#/components/responses/ServerError" }
+        "204": { description: ยกเลิกแล้ว (หรือถูกยกเลิกอยู่ก่อนแล้ว) }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /v1/public/shares/{shareKey}:
+    parameters:
+      - $ref: "#/components/parameters/ShareKey"
+      - $ref: "#/components/parameters/RequestId"
+      - $ref: "#/components/parameters/ClientIp"
+    get:
+      tags: [shares]
+      operationId: getPublicShare
+      summary: เปิดผังจากลิงก์แชร์ (ไม่ต้องล็อกอิน)
+      description: ไม่เปิดเผยเจ้าของ — response ห้ามมี id ผู้ใช้
+      x-allow-anonymous: true
+      responses:
+        "5XX": { $ref: "#/components/responses/ServerError" }
+        "200":
+          description: ผังที่แชร์
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PublicShare" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "410": { $ref: "#/components/responses/ShareGone" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /v1/contact-messages:
+    post:
+      tags: [contact]
+      operationId: createContactMessage
+      summary: บันทึกข้อความจากฟอร์มติดต่อ
+      description: |
+        BFF ตรวจ honeypot และ trim ข้อความมาแล้ว — Backend ตรวจ schema ซ้ำและนับ rate limit
+        จาก `X-Client-IP` (5 ครั้ง/10 นาที), จาก `sub` เมื่อล็อกอิน (5 ครั้ง/10 นาที) และเพดานรวม (50 ครั้ง/10 นาที)
+        การแจ้งเตือนทีมงาน (อีเมล/Slack/LINE) เป็นหน้าที่ของ Backend
+      x-allow-anonymous: true
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/ClientIp"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ContactMessageRequest" }
+      responses:
+        "5XX": { $ref: "#/components/responses/ServerError" }
+        "202":
+          description: รับข้อความแล้ว
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [id, receivedAt]
+                properties:
+                  id: { type: string }
+                  receivedAt: { type: string, format: date-time }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /v1/me:
+    parameters:
+      - $ref: "#/components/parameters/RequestId"
+    get:
+      tags: [account]
+      operationId: getMe
+      summary: โปรไฟล์ของผู้ใช้
+      responses:
+        "5XX": { $ref: "#/components/responses/ServerError" }
+        "200":
+          description: โปรไฟล์
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [account]
+      operationId: upsertMe
+      summary: สร้าง/อัปเดตโปรไฟล์ (BFF เรียกทุกครั้งที่ผู้ใช้ล็อกอิน)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpsertProfileRequest" }
+      responses:
+        "5XX": { $ref: "#/components/responses/ServerError" }
+        "200":
+          description: โปรไฟล์ล่าสุด
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    delete:
+      tags: [account]
+      operationId: deleteMe
+      summary: ลบบัญชีและข้อมูลทั้งหมดของผู้ใช้ (PDPA)
+      description: |
+        ลบถาวร: โปรไฟล์, ผังทุกผัง, ลิงก์แชร์ทุกอัน และข้อความติดต่อที่ผูกกับผู้ใช้
+        เรียกซ้ำได้ (ผู้ใช้ที่ไม่มีข้อมูลก็ตอบ 204) — สำเนาใน backup หมดไปตามรอบเก็บ backup
+      responses:
+        "5XX": { $ref: "#/components/responses/ServerError" }
+        "204": { description: ลบแล้ว }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/me/export:
+    get:
+      tags: [account]
+      operationId: exportMe
+      summary: ดาวน์โหลดข้อมูลทั้งหมดของผู้ใช้ (PDPA)
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      responses:
+        "5XX": { $ref: "#/components/responses/ServerError" }
+        "200":
+          description: ข้อมูลทั้งหมด
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AccountExport" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /v1/me/merge-guest:
+    post:
+      tags: [account]
+      operationId: mergeGuest
+      summary: ย้ายผังและลิงก์แชร์ของบัญชี Guest เข้าบัญชีปัจจุบัน
+      description: |
+        BFF เรียกเฉพาะเมื่อพิสูจน์แล้วว่าผู้ใช้ถือ session ของ Guest นั้นจริง (cookie เดิมก่อนล็อกอิน)
+        - `sub` ต้องไม่ใช่ Guest (ย้ายจาก Guest ไป Guest = 400)
+        - id ผังที่ชนกับผังเดิมของผู้ใช้ → Backend ตั้ง id ใหม่ให้ผังที่ย้ายมา และรายงานใน `renamed`
+        - เสร็จแล้วลบบัญชี Guest — เรียกซ้ำด้วย guestId เดิมได้ผล `movedLayouts: 0`
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MergeGuestRequest" }
+      responses:
+        "5XX": { $ref: "#/components/responses/ServerError" }
+        "200":
+          description: ย้ายแล้ว
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MergeGuestResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+components:
+  securitySchemes:
+    internalToken:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: "JWT HS256 จาก BFF — ตรวจ signature, `iss`, `aud`, `exp` ทุกครั้ง (ดู README)"
+
+  parameters:
+    RequestId:
+      name: X-Request-Id
+      in: header
+      required: true
+      description: UUID ต่อคำขอจาก BFF — ใส่ใน log ทุกบรรทัดเพื่อไล่ปัญหาข้ามระบบ
+      schema: { type: string, format: uuid }
+    ClientIp:
+      name: X-Client-IP
+      in: header
+      required: true
+      description: IP ของผู้ใช้ที่ BFF คำนวณแล้ว (เชื่อได้เพราะคำขอมี internal token) — ใช้นับ rate limit
+      schema: { type: string, minLength: 1, maxLength: 64 }
+    LayoutId:
+      name: layoutId
+      in: path
+      required: true
+      schema: { $ref: "#/components/schemas/Id" }
+    ShareKey:
+      name: shareKey
+      in: path
+      required: true
+      schema: { $ref: "#/components/schemas/ShareKey" }
+
+  responses:
+    BadRequest:
+      description: "body/parameter ไม่ถูกต้อง — `INVALID_REQUEST`, `INVALID_JSON`, `INVALID_LAYOUT_SCHEMA`, `ID_MISMATCH`"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Unauthorized:
+      description: "token ไม่มี/ไม่ถูกต้อง/หมดอายุ หรือ `sub` เป็น `anonymous` ใน endpoint ที่ต้องมีผู้ใช้ — `UNAUTHORIZED`"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: "ไม่พบ หรือเป็นของผู้ใช้อื่น — `NOT_FOUND`"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    PayloadTooLarge:
+      description: "body ใหญ่เกิน (ผัง 512 KB, ข้อความติดต่อ 8 KB, อื่น ๆ 1 KB) — `PAYLOAD_TOO_LARGE`"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    LayoutBlocked:
+      description: "ผังไม่ผ่านกฎจำเป็น — `LAYOUT_BLOCKED` พร้อม `validation` และ `issues` ระดับ blocked"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    ShareGone:
+      description: "ลิงก์ถูกยกเลิก (`SHARE_REVOKED`) หรือหมดอายุ (`SHARE_EXPIRED`)"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    ServerError:
+      description: "Backend ขัดข้อง (`INTERNAL_ERROR`) หรือไม่พร้อมชั่วคราว (503) — BFF ลองซ้ำเฉพาะ GET และห้ามแนบ stack trace"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    RateLimited:
+      description: "ถี่เกินกำหนด — `RATE_LIMITED` พร้อม `retryAfter` (วินาที)"
+      headers:
+        Retry-After:
+          required: true
+          schema: { type: integer, minimum: 1 }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+  schemas:
+    Health:
+      type: object
+      additionalProperties: false
+      required: [status, version]
+      properties:
+        status: { type: string, enum: [ok, degraded] }
+        version: { type: string, description: เวอร์ชันของ Backend ที่ deploy อยู่ }
+        database: { type: string, enum: [ok, unavailable] }
+
+    Id:
+      type: string
+      minLength: 1
+      maxLength: 128
+    ShareKey:
+      type: string
+      pattern: "^[A-Za-z0-9_-]{43}$"
+    DateTime:
+      type: string
+      format: date-time
+
+    # ── ผังร้าน — ต้องตรงกับ src/core/validation/layout.schema.ts (ตรวจโดย contracts/openapi.test.ts) ──
+    Coordinate:
+      description: พิกัด (ม.) ยอมให้ออกนอกร้านได้ชั่วคราว — Validation รายงาน out-of-bounds เอง
+      type: number
+      minimum: -30
+      maximum: 60
+    Size:
+      type: number
+      exclusiveMinimum: 0
+      maximum: 30
+    RoomDimension:
+      description: ขนาดร้าน 2–30 ม. ลงกริด 0.25 ม.
+      type: number
+      minimum: 2
+      maximum: 30
+      multipleOf: 0.25
+    Rotation:
+      type: integer
+      enum: [0, 90, 180, 270]
+    Kitchen:
+      type: object
+      additionalProperties: false
+      required: [id, type, x, y, width, depth, rotation]
+      properties:
+        id: { $ref: "#/components/schemas/Id" }
+        type: { const: kitchen }
+        x: { $ref: "#/components/schemas/Coordinate" }
+        y: { $ref: "#/components/schemas/Coordinate" }
+        width: { $ref: "#/components/schemas/Size" }
+        depth: { $ref: "#/components/schemas/Size" }
+        rotation: { $ref: "#/components/schemas/Rotation" }
+    Counter:
+      type: object
+      additionalProperties: false
+      required: [id, type, x, y, width, depth, rotation]
+      properties:
+        id: { $ref: "#/components/schemas/Id" }
+        type: { const: counter }
+        x: { $ref: "#/components/schemas/Coordinate" }
+        y: { $ref: "#/components/schemas/Coordinate" }
+        width: { $ref: "#/components/schemas/Size" }
+        depth: { $ref: "#/components/schemas/Size" }
+        rotation: { $ref: "#/components/schemas/Rotation" }
+    Table:
+      type: object
+      additionalProperties: false
+      required: [id, type, x, y, width, depth, rotation, chairIds]
+      properties:
+        id: { $ref: "#/components/schemas/Id" }
+        type: { const: table }
+        x: { $ref: "#/components/schemas/Coordinate" }
+        y: { $ref: "#/components/schemas/Coordinate" }
+        width: { $ref: "#/components/schemas/Size" }
+        depth: { $ref: "#/components/schemas/Size" }
+        rotation: { $ref: "#/components/schemas/Rotation" }
+        chairIds:
+          description: เก้าอี้ลูกของโต๊ะ (ว่างได้ — Completeness รายงานเป็น Warning)
+          type: array
+          maxItems: 16
+          items: { $ref: "#/components/schemas/Id" }
+        preset:
+          type: string
+          enum: [table-2-seats, table-4-seats]
+    Chair:
+      type: object
+      additionalProperties: false
+      required: [id, type, x, y, width, depth, rotation, tableId]
+      properties:
+        id: { $ref: "#/components/schemas/Id" }
+        type: { const: chair }
+        x: { $ref: "#/components/schemas/Coordinate" }
+        y: { $ref: "#/components/schemas/Coordinate" }
+        width: { $ref: "#/components/schemas/Size" }
+        depth: { $ref: "#/components/schemas/Size" }
+        rotation:
+          description: ทิศด้านหน้าของเก้าอี้ (0 = เหนือ, ตามเข็มนาฬิกา)
+          $ref: "#/components/schemas/Rotation"
+        tableId: { $ref: "#/components/schemas/Id" }
+    LayoutObject:
+      oneOf:
+        - $ref: "#/components/schemas/Kitchen"
+        - $ref: "#/components/schemas/Counter"
+        - $ref: "#/components/schemas/Table"
+        - $ref: "#/components/schemas/Chair"
+      discriminator:
+        propertyName: type
+        mapping:
+          kitchen: "#/components/schemas/Kitchen"
+          counter: "#/components/schemas/Counter"
+          table: "#/components/schemas/Table"
+          chair: "#/components/schemas/Chair"
+    Entrance:
+      type: object
+      additionalProperties: false
+      required: [id, wall, position, width]
+      properties:
+        id: { $ref: "#/components/schemas/Id" }
+        wall: { type: string, enum: [north, south, east, west] }
+        position:
+          description: ระยะจากมุมต้นผนังถึงขอบช่องประตู (ม.)
+          type: number
+          minimum: 0
+          maximum: 30
+        width:
+          type: number
+          minimum: 0.6
+          maximum: 3
+    StoreLayout:
+      description: |
+        ผังร้าน 1 ฉบับ (PRD §4) — หน่วยเมตร, จุด (0,0) คือมุมตะวันตกเฉียงเหนือ
+        กฎที่ JSON Schema ตรวจไม่ได้: id ของวัตถุต้องไม่ซ้ำกัน (ใช้ StoreLayoutSchema จาก @bosskantaponguttarawichien-boop/wang-raan-core)
+      type: object
+      additionalProperties: false
+      required: [id, version, units, width, depth, entrance, objects]
+      properties:
+        id: { $ref: "#/components/schemas/Id" }
+        version: { type: integer, minimum: 1 }
+        units: { const: m }
+        width: { $ref: "#/components/schemas/RoomDimension" }
+        depth: { $ref: "#/components/schemas/RoomDimension" }
+        entrance:
+          description: null = ยังไม่กำหนดทางเข้า (Completeness รายงานเป็น Blocked)
+          oneOf:
+            - $ref: "#/components/schemas/Entrance"
+            - type: "null"
+        objects:
+          type: array
+          maxItems: 1000
+          items: { $ref: "#/components/schemas/LayoutObject" }
+    ValidationIssue:
+      type: object
+      additionalProperties: false
+      required: [id, category, severity, objectIds, message]
+      properties:
+        id:
+          description: "id คงที่รูปแบบ `<category>/<code>[/<objectId>+<objectId>]`"
+          type: string
+        category: { type: string, enum: [completeness, collision, clearance, accessibility] }
+        severity: { type: string, enum: [blocked, warning] }
+        objectIds: { type: array, items: { type: string } }
+        message: { type: string }
+    ValidationResult:
+      description: ผลตรวจจาก validateLayout() — Backend คำนวณเอง ไม่รับจาก BFF
+      type: object
+      additionalProperties: false
+      required: [layoutRevision, status, issues, validatedAt]
+      properties:
+        layoutRevision: { type: string, minLength: 1 }
+        status: { type: string, enum: [ready, warning, blocked] }
+        issues:
+          type: array
+          items: { $ref: "#/components/schemas/ValidationIssue" }
+        validatedAt: { $ref: "#/components/schemas/DateTime" }
+
+    SaveLayoutRequest:
+      type: object
+      additionalProperties: false
+      required: [layout]
+      properties:
+        layout: { $ref: "#/components/schemas/StoreLayout" }
+    StoredLayout:
+      type: object
+      additionalProperties: false
+      required: [layout, validation, createdAt, updatedAt]
+      properties:
+        layout: { $ref: "#/components/schemas/StoreLayout" }
+        validation: { $ref: "#/components/schemas/ValidationResult" }
+        createdAt: { $ref: "#/components/schemas/DateTime" }
+        updatedAt: { $ref: "#/components/schemas/DateTime" }
+    LayoutSummary:
+      type: object
+      additionalProperties: false
+      required: [id, width, depth, objectCount, status, updatedAt]
+      properties:
+        id: { $ref: "#/components/schemas/Id" }
+        width: { type: number }
+        depth: { type: number }
+        objectCount: { type: integer, minimum: 0 }
+        status: { type: string, enum: [ready, warning, blocked] }
+        updatedAt: { $ref: "#/components/schemas/DateTime" }
+
+    # ── ลิงก์แชร์ ──
+    ShareLink:
+      type: object
+      additionalProperties: false
+      required: [shareKey, layoutId, status, createdAt, expiresAt, revokedAt]
+      properties:
+        shareKey: { $ref: "#/components/schemas/ShareKey" }
+        layoutId: { $ref: "#/components/schemas/Id" }
+        status:
+          description: คำนวณตอนตอบ — revoked มาก่อน expired
+          type: string
+          enum: [active, expired, revoked]
+        createdAt: { $ref: "#/components/schemas/DateTime" }
+        expiresAt:
+          description: null = ไม่หมดอายุ
+          oneOf:
+            - $ref: "#/components/schemas/DateTime"
+            - type: "null"
+        revokedAt:
+          oneOf:
+            - $ref: "#/components/schemas/DateTime"
+            - type: "null"
+    CreateShareRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        expiresAt:
+          description: ต้องอยู่ในอนาคตและไม่เกิน 365 วันจากตอนนี้ — ไม่ส่งหรือ null = ไม่หมดอายุ
+          oneOf:
+            - $ref: "#/components/schemas/DateTime"
+            - type: "null"
+    UpdateShareRequest:
+      type: object
+      additionalProperties: false
+      required: [expiresAt]
+      properties:
+        expiresAt:
+          description: กฎเดียวกับตอนสร้าง — null = ไม่หมดอายุ
+          oneOf:
+            - $ref: "#/components/schemas/DateTime"
+            - type: "null"
+    PublicShare:
+      type: object
+      additionalProperties: false
+      required: [layout, validation, createdAt, expiresAt]
+      properties:
+        layout: { $ref: "#/components/schemas/StoreLayout" }
+        validation: { $ref: "#/components/schemas/ValidationResult" }
+        createdAt: { $ref: "#/components/schemas/DateTime" }
+        expiresAt:
+          oneOf:
+            - $ref: "#/components/schemas/DateTime"
+            - type: "null"
+
+    # ── ฟอร์มติดต่อ — ต้องตรงกับ src/lib/contact-schema.ts (ไม่รวม honeypot) ──
+    ContactMessageRequest:
+      type: object
+      additionalProperties: false
+      required: [name, email, message]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 80 }
+        email: { type: string, format: email, minLength: 1, maxLength: 254 }
+        message: { type: string, minLength: 10, maxLength: 2000 }
+
+    # ── บัญชีผู้ใช้ ──
+    AuthProvider:
+      type: string
+      enum: [guest, google, line, github]
+    User:
+      type: object
+      additionalProperties: false
+      required: [id, provider, name, email, image, createdAt, updatedAt]
+      properties:
+        id: { $ref: "#/components/schemas/Id" }
+        provider: { $ref: "#/components/schemas/AuthProvider" }
+        name: { type: [string, "null"], maxLength: 200 }
+        email: { type: [string, "null"], format: email, maxLength: 254 }
+        image: { type: [string, "null"], format: uri, maxLength: 2048 }
+        createdAt: { $ref: "#/components/schemas/DateTime" }
+        updatedAt: { $ref: "#/components/schemas/DateTime" }
+    UpsertProfileRequest:
+      type: object
+      additionalProperties: false
+      required: [provider]
+      properties:
+        provider: { $ref: "#/components/schemas/AuthProvider" }
+        name: { type: [string, "null"], maxLength: 200 }
+        email: { type: [string, "null"], format: email, maxLength: 254 }
+        image: { type: [string, "null"], format: uri, maxLength: 2048 }
+    AccountExport:
+      type: object
+      additionalProperties: false
+      required: [exportedAt, user, layouts, shares, contactMessages]
+      properties:
+        exportedAt: { $ref: "#/components/schemas/DateTime" }
+        user: { $ref: "#/components/schemas/User" }
+        layouts:
+          type: array
+          items: { $ref: "#/components/schemas/StoredLayout" }
+        shares:
+          type: array
+          items: { $ref: "#/components/schemas/ShareLink" }
+        contactMessages:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [name, email, message, receivedAt]
+            properties:
+              name: { type: string }
+              email: { type: string }
+              message: { type: string }
+              receivedAt: { $ref: "#/components/schemas/DateTime" }
+    MergeGuestRequest:
+      type: object
+      additionalProperties: false
+      required: [guestId]
+      properties:
+        guestId:
+          type: string
+          pattern: "^guest-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    MergeGuestResult:
+      type: object
+      additionalProperties: false
+      required: [movedLayouts, movedShares, renamed]
+      properties:
+        movedLayouts: { type: integer, minimum: 0 }
+        movedShares: { type: integer, minimum: 0 }
+        renamed:
+          description: ผังที่ id ชนกับผังเดิมของผู้ใช้ จึงได้ id ใหม่
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [from, to]
+            properties:
+              from: { $ref: "#/components/schemas/Id" }
+              to: { $ref: "#/components/schemas/Id" }
+
+    # ── Error กลาง (รูปแบบเดียวกับที่ BFF ตอบเบราว์เซอร์) ──
+    ErrorCode:
+      type: string
+      enum:
+        - UNAUTHORIZED
+        - NOT_FOUND
+        - INVALID_REQUEST
+        - INVALID_JSON
+        - INVALID_LAYOUT_SCHEMA
+        - ID_MISMATCH
+        - UNSUPPORTED_MEDIA_TYPE
+        - PAYLOAD_TOO_LARGE
+        - LAYOUT_BLOCKED
+        - LAYOUT_EXISTS
+        - LAYOUT_LIMIT_REACHED
+        - SHARE_LIMIT_REACHED
+        - SHARE_REVOKED
+        - SHARE_EXPIRED
+        - RATE_LIMITED
+        - INTERNAL_ERROR
+    Error:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code: { $ref: "#/components/schemas/ErrorCode" }
+            message:
+              description: ข้อความสำหรับ log/นักพัฒนา — BFF เลือกข้อความภาษาไทยที่แสดงผู้ใช้จาก `code`
+              type: string
+            details:
+              description: รายการจุดที่ไม่ผ่าน schema
+              type: array
+              items:
+                type: object
+                additionalProperties: false
+                required: [path, message]
+                properties:
+                  path: { type: string }
+                  message: { type: string }
+            retryAfter:
+              description: วินาที (คู่กับ RATE_LIMITED)
+              type: integer
+              minimum: 1
+            validation: { $ref: "#/components/schemas/ValidationResult" }
+            issues:
+              type: array
+              items: { $ref: "#/components/schemas/ValidationIssue" }

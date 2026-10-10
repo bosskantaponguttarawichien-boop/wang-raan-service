@@ -1,0 +1,186 @@
+{
+  "features": [
+    {
+      "id": "feat-000",
+      "name": "Harness & Agent Operating System Setup",
+      "description": "ติดตั้งระบบ Harness, สคริปต์ตรวจความถูกต้องของ Task, Boundary Check, AGENTS.md, SKILL.md และ Makefile สำหรับควบคุมระเบียบการทำงานของ AI Agent อย่างเคร่งครัด",
+      "dependencies": [],
+      "gate": "./harness/init.sh รันผ่าน 100%, python3 scripts/validate_harness.py ตรวจ feature_list สำเร็จ, โครงสร้างโฟลเดอร์สมบูรณ์",
+      "status": "done",
+      "role": "core",
+      "summary": "ติดตั้งระบบ Harness, Boundary Check, AGENTS.md, SKILL.md และ Makefile สำหรับควบคุมการทำงานของ AI Agent",
+      "sprint": 1,
+      "evidence": "สร้าง harness/init.sh, scripts/validate_harness.py, scripts/harness_state.py, AGENTS.md, SKILL.md, Makefile และตรวจสอบผ่านฉลุย"
+    },
+    {
+      "id": "feat-001",
+      "name": "Project Foundation, Fastify Bootstrap & Tooling",
+      "description": "วางโครงสร้างโปรเจกต์ Node.js 20 LTS (TypeScript Strict, ESM), ติดตั้ง Fastify, Vitest, tsconfig, ESLint, Prettier, .env.example, scripts รัน dev/test/build",
+      "dependencies": [
+        "feat-000"
+      ],
+      "gate": "npm test รันผ่าน, npm run build คอมไพล์ได้ไม่มี Type error, Fastify server start/stop บน port 4000 ได้",
+      "status": "done",
+      "role": "core",
+      "summary": "วางโครงสร้างโปรเจกต์ Node.js 20 LTS ESM, Fastify, Vitest, TypeScript Strict และ Tooling พื้นฐาน",
+      "sprint": 1,
+      "evidence": "สร้าง Fastify + TypeScript Strict/ESM bootstrap, Vitest, ESLint, Prettier และ .env.example; npm run build, make test, make lint, make contract ผ่าน และยืนยัน server start/stop บน port 4000"
+    },
+    {
+      "id": "feat-002",
+      "name": "Core Package & Contract Integration",
+      "description": "เชื่อมต่อ @bosskantaponguttarawichien-boop/wang-raan-core สำหรับ validation rules, ตั้งค่า Zod schemas (^3.25), sync สัญญา contracts/openapi.yaml และ Redocly lint",
+      "dependencies": [
+        "feat-001"
+      ],
+      "gate": "import core package เพื่อ validateLayout ได้, Zod parse schemas ถูกต้อง, make contract ผ่านฉลุย",
+      "status": "done",
+      "role": "core",
+      "summary": "ติดตั้ง core rule engine (@wang-raan-core), Zod schemas, และ sync สัญญา API (OpenAPI v1.1.0)",
+      "sprint": 1,
+      "evidence": "ติดตั้ง @bosskantaponguttarawichien-boop/wang-raan-core@1.0.0 และ zod@3.25.76; เพิ่ม validator wrapper ใช้ SaveLayoutRequestSchema/validateLayout จาก package โดยตรง พร้อม test schema ผิด, duplicate object id และ blocked layout; make test, make lint และ make contract ผ่าน"
+    },
+    {
+      "id": "feat-003",
+      "name": "Database Infrastructure & Migrations Architecture",
+      "description": "สร้าง PostgreSQL connection pool, migration scripts สำหรับตาราง users, layouts, share_links, contact_messages, rate_limits ตามสเปก DDL ใน architecture.md",
+      "dependencies": [
+        "feat-001"
+      ],
+      "gate": "Migration สร้างตาราง, foreign keys และ indexes ครบถ้วน, รัน migration ซ้ำ (idempotency) และ rollback ได้ถูกต้อง",
+      "status": "done",
+      "role": "db",
+      "summary": "สร้าง PostgreSQL connection pool และ Migration scripts ครอบคลุม 5 ตารางหลักและ Indexing",
+      "sprint": 1,
+      "evidence": "เพิ่ม pg Pool, advisory-locked migration runner, migration/rollback CLI และ schema 5 ตารางพร้อม FK/indexes; ทดสอบกับ PostgreSQL 16 จริง: migrate สร้างครบ, run ซ้ำเป็น none, rollback ลบ domain tables; make test, make lint, make contract ผ่าน"
+    },
+    {
+      "id": "feat-004",
+      "name": "Security, Auth & Tracing Middleware",
+      "description": "สร้าง Middleware ตรวจสอบ Internal JWT (HS256 ด้วย INTERNAL_TOKEN_SECRET, อายุ 300s, sub extraction), X-Request-Id, X-Client-IP, Payload Limiter (512 KB) และ Error Handler",
+      "dependencies": [
+        "feat-001"
+      ],
+      "gate": "Unit tests ตรวจจับ token ถูกต้อง/ผิด/หมดอายุ, กัก anonymous ใน route ที่ไม่อนุญาต (401), error response อยู่ในรูปแบบ { error: { code, message } }",
+      "status": "not-started",
+      "role": "auth",
+      "summary": "ทำ Middleware ตรวจสอบ Internal JWT (HS256), Tracing Header, Payload Limiter และ Uniform Error Handler",
+      "sprint": 1
+    },
+    {
+      "id": "feat-005",
+      "name": "Health Check API (GET /health)",
+      "description": "ทำ endpoint GET /health ที่ตรวจสอบสถานะระบบและ connection กับ PostgreSQL โดยไม่ต้องมี Auth header (Public)",
+      "dependencies": [
+        "feat-003",
+        "feat-004"
+      ],
+      "gate": "GET /health ตอบ 200 { status: 'healthy', database: 'connected' } เมื่อระบบพร้อม และตอบ 503 เมื่อฐานข้อมูลมีปัญหา",
+      "status": "not-started",
+      "role": "api",
+      "summary": "ทำ Public Health Check endpoint (GET /health) ตรวจสอบความพร้อมของ Server และ PostgreSQL",
+      "sprint": 1
+    },
+    {
+      "id": "feat-006",
+      "name": "Layouts CRUD & Core Validation Engine",
+      "description": "ทำ CRUD สำหรับ /v1/layouts (POST, GET list, GET detail, DELETE) พร้อม dual-tier validation ผ่าน @wang-raan-core, โควตา 200 ผังต่อผู้ใช้, และ cascade revoke share links เมื่อลบผัง",
+      "dependencies": [
+        "feat-002",
+        "feat-003",
+        "feat-004"
+      ],
+      "gate": "ผัง blocked ถูกปฏิเสธด้วย 422 LAYOUT_BLOCKED, ผัง ready/warning บันทึกได้, โควตาเกิน 200 ตอบ 409, ลบผัง revoke share links อัตโนมัติ",
+      "status": "not-started",
+      "role": "api",
+      "summary": "ทำ Layouts CRUD APIs พร้อมตรวจสอบความปลอดภัยด้วย Core Rule Engine, จัดการโควตา และ Cascade Revoke",
+      "sprint": 2
+    },
+    {
+      "id": "feat-007",
+      "name": "Share Links Management & Snapshots Engine",
+      "description": "ทำ POST /v1/layouts/{layoutId}/shares, GET /v1/layouts/{layoutId}/shares, DELETE /v1/shares/{shareKey}, PATCH /v1/shares/{shareKey} พร้อมสร้าง 43-character Base64URL key, freeze layout snapshot ณ เวลาแชร์ และจำกัดโควตา 20 ลิงก์ต่อผัง",
+      "dependencies": [
+        "feat-006"
+      ],
+      "gate": "สร้าง key 43 ตัวอักษร URL-safe, snapshot ผังถูกต้อง, revoke ทำงานทันที, ผู้ใช้เข้าถึงลิงก์ของผู้อื่นตอบ 404",
+      "status": "not-started",
+      "role": "api",
+      "summary": "ทำ Share Links CRUD APIs พร้อมระบบ Snapshot ผังร้าน, Base64URL Secure Key และ Quota Control",
+      "sprint": 2
+    },
+    {
+      "id": "feat-008",
+      "name": "Public Share Viewer API",
+      "description": "ทำ GET /v1/public/shares/{shareKey} รองรับ anonymous, strip ข้อมูล owner_id ออกจาก payload, ตรวจสอบ expiration และ revocation (410 GONE)",
+      "dependencies": [
+        "feat-007"
+      ],
+      "gate": "เข้าถึงได้แบบ anonymous, ไม่มี owner info หลุดใน payload, ลิงก์ที่ revoke หรือหมดอายุตอบ 410 GONE, ไม่พบคืน 404",
+      "status": "not-started",
+      "role": "api",
+      "summary": "ทำ Public Share Viewer API (GET /v1/public/shares/{shareKey}) นิรนาม ปลอดภัย และจัดการสถานะ 410 GONE",
+      "sprint": 2
+    },
+    {
+      "id": "feat-009",
+      "name": "User Profile & PDPA Operations (Me, Export, Delete, Merge Guest)",
+      "description": "ทำ GET /v1/me, PUT /v1/me, DELETE /v1/me (PDPA cascade delete), GET /v1/me/export, และ POST /v1/me/merge-guest (Atomic transaction ย้ายผังและลิงก์ของ Guest เข้า User)",
+      "dependencies": [
+        "feat-003",
+        "feat-004",
+        "feat-006"
+      ],
+      "gate": "merge-guest ทำงานแบบ atomic ผังไม่สูญหายและแก้ id ซ้ำได้, delete user ลบข้อมูลทั้งหมดเกลี้ยงตามกฎหมาย PDPA",
+      "status": "not-started",
+      "role": "api",
+      "summary": "ทำ User Profile APIs, PDPA Data Export/Deletion และ Atomic Guest-to-User Merge Transaction",
+      "sprint": 2
+    },
+    {
+      "id": "feat-010",
+      "name": "Contact Messages & Database Rate Limiter",
+      "description": "ทำ POST /v1/contact-messages รองรับ anonymous พร้อม Fixed Window Rate Limiter บน PostgreSQL (IP: 5/10m, User: 5/10m, Global: 50/10m) และ Discord/Slack Notification Stub",
+      "dependencies": [
+        "feat-003",
+        "feat-004"
+      ],
+      "gate": "บันทึกข้อความลง DB สำเร็จ, เรียกเกิน limit ตอบ 429 พร้อม Retry-After header, schema validation ถูกต้องตาม ContactSchema",
+      "status": "not-started",
+      "role": "api",
+      "summary": "ทำ Contact Message API พร้อม Fixed Window Database Rate Limiter และ Notification Dispatcher",
+      "sprint": 2
+    },
+    {
+      "id": "feat-011",
+      "name": "Automated Contract & E2E Integration Test Suite",
+      "description": "สร้างชุดทดสอบ Integration & Contract Validation เทียบกับ contracts/openapi.yaml ตรวจสอบทุก endpoint ครอบคลุม Status Codes 200, 201, 204, 400, 401, 404, 409, 410, 415, 422, 429, 503",
+      "dependencies": [
+        "feat-005",
+        "feat-006",
+        "feat-007",
+        "feat-008",
+        "feat-009",
+        "feat-010"
+      ],
+      "gate": "รัน contract tests ผ่าน 100% เทียบกับ OpenAPI v1.1.0, จำลอง request จาก BFF และตรวจ error codes ครบทุกมิติ",
+      "status": "not-started",
+      "role": "qa",
+      "summary": "สร้างชุดทดสอบ Automated Integration & Contract Verification เทียบกับ OpenAPI v1.1.0 ครบทุกมิติ",
+      "sprint": 3
+    },
+    {
+      "id": "feat-012",
+      "name": "Docker Containerization, Railway Config & Backup Pipeline",
+      "description": "สร้าง Dockerfile multi-stage build, docker-compose.yml สำหรับ Local Dev, Railway Deployment Config, และ Backup Cron Script ทำ pg_dump ไปยัง Cloudflare R2",
+      "dependencies": [
+        "feat-011"
+      ],
+      "gate": "Docker image build ผ่านและรันได้บน port 4000, docker compose up ใช้งานคู่กับ PostgreSQL ได้, สคริปต์ backup ทดสอบเชื่อมต่อ R2 สำเร็จ",
+      "status": "not-started",
+      "role": "devops",
+      "summary": "สร้าง Dockerfile, Docker Compose สำหรับ Local Dev, Railway Config และ Backup Pipeline สู่ Cloudflare R2",
+      "sprint": 3
+    }
+  ]
+}
