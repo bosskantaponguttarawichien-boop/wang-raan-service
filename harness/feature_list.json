@@ -62,10 +62,11 @@
         "feat-001"
       ],
       "gate": "Unit tests ตรวจจับ token ถูกต้อง/ผิด/หมดอายุ, กัก anonymous ใน route ที่ไม่อนุญาต (401), error response อยู่ในรูปแบบ { error: { code, message } }",
-      "status": "not-started",
+      "status": "done",
       "role": "auth",
       "summary": "ทำ Middleware ตรวจสอบ Internal JWT (HS256), Tracing Header, Payload Limiter และ Uniform Error Handler",
-      "sprint": 1
+      "sprint": 1,
+      "evidence": "เพิ่ม src/config/env.ts (Zod, secret ≥32), middleware auth (jose HS256, iss/aud, maxTokenAge 300s, tolerance 5s, exp-iat ≤300, sub ≤128, นโยบาย config.auth user|anonymous|none ใน onRequest ก่อน parse body), request-context (X-Request-Id→requestId ใน log + response header, X-Client-IP), BODY_LIMITS (1KB/8KB/512KB), error handler แบบ { error: { code, message } } (413/415/400 INVALID_JSON/INVALID_REQUEST/404/500 ไม่มี stack); test/middleware.test.ts 30 เคส; make test 38/38, make lint, make contract ผ่าน; smoke test บน dist ยืนยัน log มี requestId และไม่มี token"
     },
     {
       "id": "feat-005",

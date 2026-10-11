@@ -47,3 +47,12 @@
 - เพิ่ม CLI `npm run db:migrate` และ `npm run db:rollback`; migration state เก็บใน `schema_migrations`
 - QA integration บน PostgreSQL 16 container: migrate สร้าง tables/indexes ครบ, run ซ้ำรายงาน none, rollback ลบ domain tables เหลือ 0; ปิดและลบ container ทดสอบแล้ว
 - QA: `make test` 7/7, `make lint`, `make contract` และ `npm run format` ผ่าน
+## [2026-10-11 13:55] feat-004: Security, Auth & Tracing Middleware
+
+- เพิ่ม `jose` และ `src/config/env.ts` ตรวจ env ด้วย Zod (`INTERNAL_TOKEN_SECRET` ≥ 32 ตัวอักษร, `LOG_LEVEL`) — ค่าผิดให้ server ล้มตั้งแต่เริ่ม
+- `src/middleware/auth.ts`: ตรวจ Bearer JWT HS256, `iss`/`aud`, `maxTokenAge` 300s + clock tolerance 5s, บังคับ `exp - iat ≤ 300`, `sub` 1–128 ตัว; นโยบายต่อ route ผ่าน `config.auth` (`user` ค่าเริ่มต้น / `anonymous` สำหรับ `x-allow-anonymous` / `none` สำหรับ `/health`); รันใน `onRequest` ก่อน parse body และครอบ 404 handler ด้วย
+- `src/middleware/request-context.ts`: ใช้ `X-Request-Id` (UUID) เป็น request id → log label `requestId` และส่งกลับใน response header; ค่าไม่ใช่ UUID สร้างใหม่; อ่าน `X-Client-IP` เป็น `request.clientIp`
+- `src/middleware/payload-limiter.ts`: `BODY_LIMITS` (default 1 KB ระดับ app, ผัง 512 KB, ฟอร์มติดต่อ 8 KB ให้ route ระบุเอง)
+- `src/middleware/error-handler.ts` + `errors.ts`: `AppError` และ error format `{ error: { code, message, ... } }` ตามสัญญา; map 413/415/400 INVALID_JSON/INVALID_REQUEST (Zod/Fastify validation พร้อม `details`)/404/500 INTERNAL_ERROR โดยไม่เปิดเผยข้อความภายใน
+- Logger redact `authorization`/`cookie`; `buildApp()` รับ `{ config, fastify }`
+- QA: `make test` 38/38 (เพิ่ม middleware 30 เคส, config 2 เคส), `make lint`, `make contract` ผ่าน; smoke test บน `dist/` ยืนยัน 401 + `x-request-id` สะท้อนกลับ, log มี `requestId` และไม่มี token

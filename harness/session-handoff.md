@@ -3,29 +3,6 @@
 > **archive**: เก็บ 5 entry ล่าสุดเท่านั้น — รายการก่อนหน้าจะถูกย้ายไปเก็บที่
 > `harness/archive/session-handoff-archive.md`
 
-## 2026-10-10 16:30 ICT — feat-000 เสร็จ: ติดตั้ง Harness และ Agent Operating System
-
-### Core & Dev
-- Harness ecosystem สร้างเสร็จสมบูรณ์ตามแบบฉบับของ `wang-raan`:
-  - `harness/init.sh` ตรวจสอบสุขภาพระบบ, Node.js 20+, Docker, Python3, Boundary checks
-  - `scripts/validate_harness.py` และ `scripts/harness_state.py`
-  - `harness/feature_list.json` วางผัง 13 tasks (feat-000 ถึง feat-012)
-  - `contracts/openapi.yaml` (v1.1.0) สำหรับอ้างอิง API specs
-  - `PRD.md`, `README.md`, `AGENTS.md` และ `SKILL.md` ปรับปรุงให้สอดคล้องกับตัวโปรเจกต์ Backend Service และ OpenAPI 100%
-  - `Makefile` รองรับคำสั่ง `init`, `status`, `test`, `lint`, `contract`, `dev`, `build`, `docker-up`, `docker-down`
-
-### QA
-- `./harness/init.sh` รันผ่านสมบูรณ์
-- `validate_harness.py` ผ่าน 13/13 tasks ไม่มี circular dependencies
-
-### Active Blockers / Open Questions
-- ไม่มี blockers สำหรับ feat-001
-- ต้องเตรียมสิทธิ์ GitHub Token (`read:packages`) สำหรับติดตั้ง `@bosskantaponguttarawichien-boop/wang-raan-core` ใน feat-002
-
-### Next Steps
-1. เริ่ม **feat-001**: สร้างโครงสร้างโปรเจกต์ `package.json`, TypeScript, Fastify, Vitest, Tooling
-2. ต่อด้วย **feat-002** (Core package & Zod) และ **feat-003** (PostgreSQL Migrations)
-
 ## 2026-10-10 16:31 ICT — ตรวจยืนยัน feat-000
 
 ### Verification
@@ -76,3 +53,21 @@
 
 ### Next Step
 1. เริ่ม **feat-004**: Security, Auth & Tracing Middleware
+
+## 2026-10-11 13:55 ICT — feat-004 เสร็จ: Security, Auth & Tracing Middleware
+
+### Core & Dev
+- `buildApp({ config?, fastify? })` ติดตั้ง pipeline กลาง: error handler → request context (X-Request-Id / X-Client-IP) → auth (onRequest)
+- route ใหม่กำหนดสิทธิ์ด้วย `config: { auth: 'user' | 'anonymous' | 'none' }` (ค่าเริ่มต้น `user`); ใช้ `request.auth.userId` เท่านั้นเป็นตัวตนผู้ใช้
+- route ที่รับ body ใหญ่ต้องตั้ง `bodyLimit: BODY_LIMITS.layout` / `BODY_LIMITS.contactMessage`; ค่าอื่นใช้ 1 KB อัตโนมัติ
+- โยน `AppError(status, code, message, extras)` จาก service เพื่อให้ได้ error format ตามสัญญา; ZodError แปลงเป็น 400 INVALID_REQUEST อัตโนมัติ
+
+### QA
+- ผ่าน `make test` (38/38), `make lint`, `make contract`; smoke test บน build จริงผ่าน
+
+### Notes
+- `X-Request-Id` ที่ไม่มี/ไม่ใช่ UUID จะสร้างใหม่แทนการตอบ 400 (BFF ส่งเสมอ) — `X-Client-IP` ที่บังคับใน feat-008/010 ให้ route ตรวจ `request.clientIp` เอง
+- `GET /health` ใน feat-005 ต้องตั้ง `config: { auth: 'none' }`
+
+### Next Step
+1. เริ่ม **feat-005**: Health Check API (`GET /health`)
