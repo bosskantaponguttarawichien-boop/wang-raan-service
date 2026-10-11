@@ -19,6 +19,7 @@ describe('security, auth & tracing middleware', () => {
     app.get('/private', async (request) => ({ auth: request.auth, clientIp: request.clientIp }));
     app.get('/public', { config: { auth: 'anonymous' } }, async (request) => ({ auth: request.auth }));
     app.get('/open', { config: { auth: 'none' } }, async (request) => ({ auth: request.auth }));
+    app.get('/items/:id', async () => ({}));
     app.post('/echo', async (request) => ({ body: request.body }));
     app.post('/layout', { bodyLimit: BODY_LIMITS.layout }, async () => ({ ok: true }));
     app.get('/boom', async () => {
@@ -111,6 +112,16 @@ describe('security, auth & tracing middleware', () => {
       expect(authed.statusCode).toBe(404);
       expect(authed.json()).toEqual({ error: { code: 'NOT_FOUND', message: 'route not found' } });
     });
+  });
+
+  it('answers malformed and over-long URLs in the contract error format', async () => {
+    const badUrl = await app.inject({ url: '/items/%E0%A4%A' });
+    const longParam = await app.inject({ url: `/items/${'x'.repeat(3000)}` });
+
+    for (const response of [badUrl, longParam]) {
+      expect(response.statusCode).toBe(404);
+      expect(response.json()).toEqual({ error: { code: 'NOT_FOUND', message: 'route not found' } });
+    }
   });
 
   describe('tracing headers', () => {

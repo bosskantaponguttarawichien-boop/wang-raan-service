@@ -1,5 +1,5 @@
 import { jwtVerify } from 'jose';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { unauthorized } from './errors.js';
 
 export const TOKEN_ISSUER = 'wang-raan-bff';
@@ -80,4 +80,13 @@ export function registerAuth(app: FastifyInstance, secret: string): void {
 
     request.auth = context;
   });
+}
+
+/**
+ * ตัวตนผู้ใช้ของคำขอ — มาจาก `sub` ใน token เท่านั้น (ห้ามอ่านจาก body/query/path)
+ * เรียกได้เฉพาะใน route ที่ผ่าน auth hook แล้ว
+ */
+export function requireUserId(request: FastifyRequest): string {
+  if (!request.auth) throw new Error('auth context missing on an authenticated route');
+  return request.auth.userId;
 }

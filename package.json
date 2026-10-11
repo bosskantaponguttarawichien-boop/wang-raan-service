@@ -17,8 +17,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint .",
-    "format": "prettier --check package.json tsconfig.json eslint.config.js vitest.config.ts src test",
-    "format:write": "prettier --write package.json tsconfig.json eslint.config.js vitest.config.ts src test"
+    "format": "prettier --check package.json tsconfig.json eslint.config.js vitest.config.ts vitest.integration.config.ts src test",
+    "format:write": "prettier --write package.json tsconfig.json eslint.config.js vitest.config.ts vitest.integration.config.ts src test",
+    "test:integration": "scripts/with-test-db.sh vitest run --config vitest.integration.config.ts"
   },
   "dependencies": {
     "@bosskantaponguttarawichien-boop/wang-raan-core": "^1.0.0",

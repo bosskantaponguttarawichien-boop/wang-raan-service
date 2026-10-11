@@ -93,10 +93,11 @@
         "feat-004"
       ],
       "gate": "ผัง blocked ถูกปฏิเสธด้วย 422 LAYOUT_BLOCKED, ผัง ready/warning บันทึกได้, โควตาเกิน 200 ตอบ 409, ลบผัง revoke share links อัตโนมัติ",
-      "status": "not-started",
+      "status": "done",
       "role": "api",
       "summary": "ทำ Layouts CRUD APIs พร้อมตรวจสอบความปลอดภัยด้วย Core Rule Engine, จัดการโควตา และ Cascade Revoke",
-      "sprint": 2
+      "sprint": 2,
+      "evidence": "เพิ่ม src/modules/layouts (GET list/POST/GET/PUT/DELETE) + users.repository.ensureUser + db/transaction (withTransaction, advisory lock ต่อผู้ใช้); dual-tier validation ก่อนแตะ DB (400 INVALID_LAYOUT_SCHEMA+details, 422 LAYOUT_BLOCKED+validation+issues ระดับ blocked, 400 ID_MISMATCH), 409 LAYOUT_EXISTS/LAYOUT_LIMIT_REACHED (ทดสอบ race 5 คำขอพร้อมกันไม่เกิน 200), 404 ของผู้อื่น, DELETE+revoke share ใน transaction เดียว; ปิด text/plain parser (415), maxParamLength+frameworkErrors; integration test บน PostgreSQL 16 (scripts/with-test-db.sh) 16 เคส; make test (unit 46 + integration 16), make lint, make contract ผ่าน"
     },
     {
       "id": "feat-007",

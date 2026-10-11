@@ -16,8 +16,9 @@ init:           ## ตรวจสอบสภาพแวดล้อมแล�
 status:         ## ตรวจสอบความถูกต้องของ Feature List ใน Harness
 	@$(PYTHON) scripts/validate_harness.py
 
-test:           ## รัน Unit Tests ทั้งหมด
-	@if [ -f package.json ]; then npm test; else echo "ยังไม่มี package.json กำลังรอการสร้างใน feat-001"; fi
+test:           ## รัน Unit Tests และ Integration Tests (PostgreSQL ผ่าน Docker หรือ TEST_DATABASE_URL)
+	@npm test
+	@npm run --silent test:integration
 
 lint:           ## ตรวจสอบ Architectural Boundaries และ Linting
 	@./harness/init.sh --check-env-only

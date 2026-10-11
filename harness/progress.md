@@ -63,3 +63,13 @@
 - `AppConfig.version` มาจาก `APP_VERSION` (ตั้งตอน deploy) หรือ `version` ใน package.json
 - `buildApp({ database })` รับ pool จากผู้เรียก; `server.ts` สร้าง pool, ดัก `error` ของ idle client (กัน process ล่มตอน DB รีสตาร์ต) และปิด pool ใน `onClose`; ปิด request log ของ `/health`
 - QA: `make test` 45/45, `make lint`, `make contract` ผ่าน; smoke test กับ PostgreSQL 16 container: DB ขึ้น → 200, หยุด DB → 503 และ server ยังทำงาน, log ไม่มี credentials; ลบ container แล้ว
+## [2026-10-11 14:50] feat-006: Layouts CRUD & Core Validation Engine
+
+- เพิ่ม `src/modules/layouts/` (schemas, repository, service, routes) ครบ 5 endpoint ตามสัญญา รวม `PUT /v1/layouts/{layoutId}` ซึ่ง description ของ feature ไม่ได้ระบุแต่สัญญากำหนด
+- ด่านตรวจสองชั้นก่อนแตะ DB: `SaveLayoutRequestSchema` (strict — `validation` จาก client ถูกปฏิเสธ) → `validateLayout()`; blocked → 422 พร้อม `validation` และ `issues` ระดับ blocked
+- โควตา 200 ผัง/ผู้ใช้ตรวจภายใต้ `pg_advisory_xact_lock` ต่อผู้ใช้ (ทดสอบยิงพร้อมกัน 5 คำขอแล้วไม่เกิน 200)
+- `ensureUser()` สร้างแถว users ขั้นต่ำ (provider จาก prefix ของ sub) เพราะ FK — sub ที่ provider ไม่รู้จักตอบ 401
+- DELETE ลบผังและ revoke share links ใน transaction เดียว (`src/modules/shares/shares.repository.ts`)
+- Middleware: ปิด parser `text/plain` (ต้อง 415), `maxParamLength` 2048 และ `frameworkErrors` ให้ URL เสีย/param ยาวเกินตอบ 404 รูปแบบสัญญา; id เกิน 128 ตัวตอบ 404
+- Integration test infra: `scripts/with-test-db.sh` (Postgres 16 ชั่วคราวผ่าน Docker หรือ `TEST_DATABASE_URL`), `vitest.integration.config.ts`, `npm run test:integration`; `make test` รันทั้ง unit และ integration
+- QA: unit 46/46, integration 16/16, `make lint`, `make contract` ผ่าน

@@ -61,3 +61,13 @@ export function registerErrorHandler(app: FastifyInstance): void {
     return reply.status(appError.statusCode).send(appError.toBody());
   });
 }
+
+/**
+ * error ระดับ router (URL ถอดรหัสไม่ได้ / path param ยาวเกิน) เกิดก่อน hook ใด ๆ
+ * path แบบนี้ชี้ไปยังทรัพยากรที่มีอยู่ไม่ได้ จึงตอบ 404 ในรูปแบบเดียวกับสัญญา
+ */
+export function sendFrameworkError(error: FastifyError, request: FastifyRequest, reply: FastifyReply): void {
+  request.log.info({ code: error.code }, 'request rejected by router');
+  const appError = notFound('route not found');
+  void reply.status(appError.statusCode).send(appError.toBody());
+}

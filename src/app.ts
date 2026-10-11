@@ -1,18 +1,22 @@
 import Fastify, { LogController } from 'fastify';
 import type { FastifyInstance, FastifyServerOptions } from 'fastify';
+import type { Pool } from 'pg';
 import { loadConfig } from './config/env.js';
 import type { AppConfig } from './config/env.js';
 import { registerAuth } from './middleware/auth.js';
-import { registerErrorHandler } from './middleware/error-handler.js';
+import { registerErrorHandler, sendFrameworkError } from './middleware/error-handler.js';
 import { BODY_LIMITS } from './middleware/payload-limiter.js';
 import { generateRequestId, registerRequestContext } from './middleware/request-context.js';
 import { registerHealthRoutes } from './modules/health/health.routes.js';
-import type { DatabaseProbeTarget } from './modules/health/health.service.js';
+import { registerLayoutRoutes } from './modules/layouts/layouts.routes.js';
 
 export interface BuildAppOptions {
   config?: AppConfig;
-  /** PostgreSQL pool ที่ผู้เรียกเป็นเจ้าของและต้องปิดเอง — ไม่ส่งมา health จะรายงาน `unavailable` */
-  database?: DatabaseProbeTarget;
+  /**
+   * PostgreSQL pool ที่ผู้เรียกเป็นเจ้าของและต้องปิดเอง
+   * ไม่ส่งมา = ลงทะเบียนเฉพาะ `/health` (รายงาน `unavailable`) — ใช้ในเทสของ middleware
+   */
+  database?: Pool;
   fastify?: FastifyServerOptions;
 }
 
@@ -35,6 +39,9 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       disableRequestLogging: (request: { url?: string }) => request.url === '/health',
     }),
     bodyLimit: BODY_LIMITS.default,
+    // id ยาวได้ 128 ตัวอักษร — เผื่อ percent-encoding ของอักขระหลายไบต์ (สูงสุด 9 ไบต์ต่อตัว)
+    maxParamLength: 2048,
+    frameworkErrors: sendFrameworkError,
     ...options.fastify,
   });
 
@@ -42,7 +49,14 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   registerRequestContext(app);
   registerAuth(app, config.internalTokenSecret);
 
+  // สัญญารับเฉพาะ JSON — ปิด parser text/plain ที่ Fastify มีให้ เพื่อให้ตอบ 415 ตามสัญญา
+  app.removeContentTypeParser('text/plain');
+
   registerHealthRoutes(app, { database: options.database, version: config.version });
+
+  if (options.database) {
+    registerLayoutRoutes(app, options.database);
+  }
 
   return app;
 }
