@@ -1,11 +1,15 @@
 import { readFileSync } from 'node:fs';
 import { z } from 'zod';
 
+/** ตัวแปรที่ตั้งเป็นค่าว่าง (เช่น `${VAR:-}` ใน compose) ถือว่าไม่ได้ตั้ง */
+const optional = <T extends z.ZodTypeAny>(schema: T) =>
+  z.preprocess((value) => (value === '' ? undefined : value), schema.optional());
+
 const EnvSchema = z.object({
   INTERNAL_TOKEN_SECRET: z.string().min(32, 'INTERNAL_TOKEN_SECRET must be at least 32 characters'),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
-  APP_VERSION: z.string().trim().min(1).max(64).optional(),
-  CONTACT_WEBHOOK_URL: z.string().url().optional(),
+  APP_VERSION: optional(z.string().trim().min(1).max(64)),
+  CONTACT_WEBHOOK_URL: optional(z.string().url()),
 });
 
 /** เวอร์ชันจาก package.json — path เดียวกันทั้งจาก src/config และ dist/config */

@@ -21,4 +21,17 @@ describe('loadConfig', () => {
       '2026.10.11-abc123',
     );
   });
+
+  it('treats empty optional variables as unset and validates the webhook URL', () => {
+    const base = { INTERNAL_TOKEN_SECRET: 'x'.repeat(32) };
+
+    expect(loadConfig({ ...base, CONTACT_WEBHOOK_URL: '', APP_VERSION: '' })).toMatchObject({
+      contactWebhookUrl: null,
+      version: '0.1.0',
+    });
+    expect(loadConfig({ ...base, CONTACT_WEBHOOK_URL: 'https://hooks.example/x' }).contactWebhookUrl).toBe(
+      'https://hooks.example/x',
+    );
+    expect(() => loadConfig({ ...base, CONTACT_WEBHOOK_URL: 'not a url' })).toThrow(/CONTACT_WEBHOOK_URL/);
+  });
 });

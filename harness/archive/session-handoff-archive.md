@@ -32,3 +32,17 @@
 
 ### Next Step
 1. เริ่ม **feat-001** ตามแผน Sprint 1 เมื่อได้รับคำสั่ง
+
+## 2026-10-10 16:57 ICT — feat-001 เสร็จ: Fastify Foundation & Tooling
+
+### Core & Dev
+- เพิ่ม Fastify bootstrap (`src/app.ts`, `src/server.ts`) แบบ ESM และ TypeScript strict
+- เพิ่ม `package.json`, toolchain configurations, `.env.example`, ignore files และ Vitest lifecycle test
+- `npm start` ฟังที่ `0.0.0.0:4000`; route ของโดเมนและ health check ฉบับจริงยังสงวนไว้ให้ feature ถัดไป
+
+### QA
+- ผ่าน `npm run build`, `make test`, `make lint`, `make contract` และ `npm run format`
+- ทดสอบเปิดและปิด Fastify server บน port 4000 สำเร็จ
+
+### Next Steps
+1. เริ่ม **feat-002**: เชื่อมต่อ core package, Zod และ contract integration

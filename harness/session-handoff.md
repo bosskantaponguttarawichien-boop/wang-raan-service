@@ -3,20 +3,6 @@
 > **archive**: เก็บ 5 entry ล่าสุดเท่านั้น — รายการก่อนหน้าจะถูกย้ายไปเก็บที่
 > `harness/archive/session-handoff-archive.md`
 
-## 2026-10-10 16:57 ICT — feat-001 เสร็จ: Fastify Foundation & Tooling
-
-### Core & Dev
-- เพิ่ม Fastify bootstrap (`src/app.ts`, `src/server.ts`) แบบ ESM และ TypeScript strict
-- เพิ่ม `package.json`, toolchain configurations, `.env.example`, ignore files และ Vitest lifecycle test
-- `npm start` ฟังที่ `0.0.0.0:4000`; route ของโดเมนและ health check ฉบับจริงยังสงวนไว้ให้ feature ถัดไป
-
-### QA
-- ผ่าน `npm run build`, `make test`, `make lint`, `make contract` และ `npm run format`
-- ทดสอบเปิดและปิด Fastify server บน port 4000 สำเร็จ
-
-### Next Steps
-1. เริ่ม **feat-002**: เชื่อมต่อ core package, Zod และ contract integration
-
 ## 2026-10-10 17:24 ICT — feat-002 เสร็จ: Core Package & Contract Integration
 
 ### Core & Dev
@@ -79,3 +65,32 @@
 
 ### Next Step
 1. เริ่ม **feat-006**: Layouts CRUD & Core Validation Engine (Sprint 2)
+
+## 2026-10-11 17:00 ICT — feat-006 ถึง feat-012 เสร็จ: Domain APIs, Contract Tests, Deploy
+
+### Core & Dev
+- ทุก endpoint ใน `contracts/openapi.yaml` v1.1.0 มี implementation แล้ว: `src/modules/{layouts,shares,users,contact,health}`
+- pattern: routes → service (business rule, transaction) → repository (SQL ที่มี `owner_id` เสมอ); ตัวตนจาก `requireUserId(request)` เท่านั้น
+- `withTransaction` + `lockUser` (advisory lock ต่อผู้ใช้) ใช้กับโควตาผัง, merge guest, PDPA delete; โควตาลิงก์ใช้ `FOR UPDATE` บนแถวผัง
+- `ensureUser()` สร้างแถว users ขั้นต่ำก่อนเขียนข้อมูล (FK) — sub ที่ provider ไม่รู้จักตอบ 401
+- Contact: rate limit fixed window บน `rate_limits` + webhook notifier (`CONTACT_WEBHOOK_URL`) + janitor ใน `server.ts`
+- Deploy: `Dockerfile`, `docker-compose.yml`, `railway.json`, `backup/` (R2)
+
+### QA
+- `make test` = unit 57 + integration/contract 58 (PostgreSQL 16 ชั่วคราวผ่าน Docker หรือ `TEST_DATABASE_URL`)
+- contract test ตรวจทุก response กับ openapi.yaml ด้วย Ajv และตรวจ security/x-allow-anonymous ทุก operation
+- `make lint`, `make contract`, `make build`, `make docker-build` ผ่าน; compose + backup/restore ทดสอบด้วย Docker จริง
+
+### Open Questions / Decisions to Confirm
+- สัญญาไม่ได้ประกาศ 415 ใน responses ของ endpoint ใด (มีแค่ใน ErrorCode) — ควรเพิ่มใน openapi.yaml ของ repo หลัก
+- `PUT /v1/me` ใช้เพดาน body 4 KB (สัญญาบอก "อื่น ๆ ≤ 1 KB" แต่โปรไฟล์ที่ถูกต้องยาวได้ ~2.6 KB)
+- merge-guest ไม่ตรวจโควตา 200 ผัง (สัญญาไม่มี error ให้), ย้าย contact messages ของ Guest ไปด้วย
+- `PUT /v1/me`: ฟิลด์ที่ไม่ส่ง = คงค่าเดิม, `provider` ต้องตรงกับ prefix ของ `sub`
+- ยังไม่บังคับ `X-Client-IP` / rate limit บน public share (สัญญาไม่มีตัวเลข)
+- gate ของ feat-005 ใน feature_list ไม่ตรงสัญญา (ยึดสัญญา)
+- ยังไม่ได้ทดสอบ R2 จริงและยังไม่ได้ deploy Railway จริง (`preDeployCommand`, build secret `NODE_AUTH_TOKEN`)
+
+### Next Steps
+1. ทบทวนและ commit งาน feat-004 ถึง feat-012 (ยังไม่ได้ commit)
+2. ตั้งค่า Railway (API + Postgres + backup cron) และ R2 bucket จริง แล้วทดสอบ deploy/backup ครั้งแรก
+3. แจ้งทีม repo หลักเรื่องช่องว่างของสัญญา (415, เพดาน body ของโปรไฟล์)

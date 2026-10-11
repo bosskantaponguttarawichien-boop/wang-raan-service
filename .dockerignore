@@ -1,0 +1,17 @@
+node_modules
+dist
+coverage
+test
+harness
+scripts
+contracts
+backup
+.git
+.github
+.env
+.env.*
+!.env.example
+*.log
+*.md
+Dockerfile
+docker-compose.yml
