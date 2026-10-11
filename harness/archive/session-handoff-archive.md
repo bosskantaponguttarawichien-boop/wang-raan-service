@@ -22,3 +22,13 @@
 ### Next Steps
 1. เริ่ม **feat-001**: สร้างโครงสร้างโปรเจกต์ `package.json`, TypeScript, Fastify, Vitest, Tooling
 2. ต่อด้วย **feat-002** (Core package & Zod) และ **feat-003** (PostgreSQL Migrations)
+
+## 2026-10-10 16:31 ICT — ตรวจยืนยัน feat-000
+
+### Verification
+- อ่านเอกสารหลัก, OpenAPI v1.1.0 และสถานะ Harness ครบถ้วนแล้ว
+- `./harness/init.sh` และ `make status` ผ่าน: มี 13 งาน, `feat-000` เป็นงานเดียวที่เสร็จสมบูรณ์ และไม่มี dependency หรือ blocker ค้างอยู่
+- ไม่แก้ไขโค้ดหรือสถานะของ `feat-000` เพราะมีหลักฐานการทำงานครบอยู่แล้ว
+
+### Next Step
+1. เริ่ม **feat-001** ตามแผน Sprint 1 เมื่อได้รับคำสั่ง

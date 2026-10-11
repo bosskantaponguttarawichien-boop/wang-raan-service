@@ -56,3 +56,10 @@
 - `src/middleware/error-handler.ts` + `errors.ts`: `AppError` และ error format `{ error: { code, message, ... } }` ตามสัญญา; map 413/415/400 INVALID_JSON/INVALID_REQUEST (Zod/Fastify validation พร้อม `details`)/404/500 INTERNAL_ERROR โดยไม่เปิดเผยข้อความภายใน
 - Logger redact `authorization`/`cookie`; `buildApp()` รับ `{ config, fastify }`
 - QA: `make test` 38/38 (เพิ่ม middleware 30 เคส, config 2 เคส), `make lint`, `make contract` ผ่าน; smoke test บน `dist/` ยืนยัน 401 + `x-request-id` สะท้อนกลับ, log มี `requestId` และไม่มี token
+## [2026-10-11 14:15] feat-005: Health Check API (GET /health)
+
+- เพิ่ม `src/modules/health/health.service.ts` (probe `SELECT 1` พร้อม timeout 2 วินาที เพราะ pg ไม่มี connect timeout ค่าเริ่มต้น) และ `health.routes.ts` (`config: { auth: 'none' }`, `Cache-Control: no-store`)
+- Response ตาม `components.schemas.Health`: 200 `{ status: "ok", version, database: "ok" }` / 503 `{ status: "degraded", version, database: "unavailable" }` — gate ใน feature_list เขียน `healthy`/`connected` ซึ่งขัด openapi.yaml จึงยึดสัญญา
+- `AppConfig.version` มาจาก `APP_VERSION` (ตั้งตอน deploy) หรือ `version` ใน package.json
+- `buildApp({ database })` รับ pool จากผู้เรียก; `server.ts` สร้าง pool, ดัก `error` ของ idle client (กัน process ล่มตอน DB รีสตาร์ต) และปิด pool ใน `onClose`; ปิด request log ของ `/health`
+- QA: `make test` 45/45, `make lint`, `make contract` ผ่าน; smoke test กับ PostgreSQL 16 container: DB ขึ้น → 200, หยุด DB → 503 และ server ยังทำงาน, log ไม่มี credentials; ลบ container แล้ว

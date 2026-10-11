@@ -6,9 +6,13 @@ import { registerAuth } from './middleware/auth.js';
 import { registerErrorHandler } from './middleware/error-handler.js';
 import { BODY_LIMITS } from './middleware/payload-limiter.js';
 import { generateRequestId, registerRequestContext } from './middleware/request-context.js';
+import { registerHealthRoutes } from './modules/health/health.routes.js';
+import type { DatabaseProbeTarget } from './modules/health/health.service.js';
 
 export interface BuildAppOptions {
   config?: AppConfig;
+  /** PostgreSQL pool ที่ผู้เรียกเป็นเจ้าของและต้องปิดเอง — ไม่ส่งมา health จะรายงาน `unavailable` */
+  database?: DatabaseProbeTarget;
   fastify?: FastifyServerOptions;
 }
 
@@ -25,7 +29,11 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       redact: ['req.headers.authorization', 'req.headers.cookie'],
     },
     genReqId: generateRequestId,
-    logController: new LogController({ requestIdLogLabel: 'requestId' }),
+    logController: new LogController({
+      requestIdLogLabel: 'requestId',
+      // health check ถูกเรียกถี่โดย platform — ไม่ต้องบันทึก request log ทุกครั้ง
+      disableRequestLogging: (request: { url?: string }) => request.url === '/health',
+    }),
     bodyLimit: BODY_LIMITS.default,
     ...options.fastify,
   });
@@ -33,6 +41,8 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   registerErrorHandler(app);
   registerRequestContext(app);
   registerAuth(app, config.internalTokenSecret);
+
+  registerHealthRoutes(app, { database: options.database, version: config.version });
 
   return app;
 }

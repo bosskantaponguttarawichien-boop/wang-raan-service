@@ -3,16 +3,6 @@
 > **archive**: เก็บ 5 entry ล่าสุดเท่านั้น — รายการก่อนหน้าจะถูกย้ายไปเก็บที่
 > `harness/archive/session-handoff-archive.md`
 
-## 2026-10-10 16:31 ICT — ตรวจยืนยัน feat-000
-
-### Verification
-- อ่านเอกสารหลัก, OpenAPI v1.1.0 และสถานะ Harness ครบถ้วนแล้ว
-- `./harness/init.sh` และ `make status` ผ่าน: มี 13 งาน, `feat-000` เป็นงานเดียวที่เสร็จสมบูรณ์ และไม่มี dependency หรือ blocker ค้างอยู่
-- ไม่แก้ไขโค้ดหรือสถานะของ `feat-000` เพราะมีหลักฐานการทำงานครบอยู่แล้ว
-
-### Next Step
-1. เริ่ม **feat-001** ตามแผน Sprint 1 เมื่อได้รับคำสั่ง
-
 ## 2026-10-10 16:57 ICT — feat-001 เสร็จ: Fastify Foundation & Tooling
 
 ### Core & Dev
@@ -71,3 +61,21 @@
 
 ### Next Step
 1. เริ่ม **feat-005**: Health Check API (`GET /health`)
+
+## 2026-10-11 14:15 ICT — feat-005 เสร็จ: Health Check API
+
+### Core & Dev
+- `GET /health` ใน `src/modules/health/` ไม่ต้องมี token; ตอบ 200 ok / 503 degraded ตาม openapi `Health` schema
+- `buildApp({ config?, database?, fastify? })` — module ถัดไปที่ต้องใช้ DB ให้รับ pool ผ่าน option `database` ในรูปแบบเดียวกัน
+- `server.ts` เป็นเจ้าของ pg pool (สร้าง, ดัก idle error, ปิดตอน shutdown) — ต้องมี `DATABASE_URL`
+- ตั้ง `APP_VERSION` ตอน deploy (feat-012) เพื่อให้ health รายงานเวอร์ชันจริง ไม่งั้นใช้ค่าจาก package.json
+
+### QA
+- ผ่าน `make test` (45/45), `make lint`, `make contract`; smoke test กับ PostgreSQL 16 จริงผ่าน (200 → 503 เมื่อหยุด DB)
+
+### Notes
+- gate ของ feat-005 ใน feature_list เขียน `healthy`/`connected` ไม่ตรง openapi.yaml — implement ตามสัญญา (`ok`/`degraded`, `ok`/`unavailable`)
+- Sprint 1 เสร็จครบ (feat-000 ถึง feat-005)
+
+### Next Step
+1. เริ่ม **feat-006**: Layouts CRUD & Core Validation Engine (Sprint 2)

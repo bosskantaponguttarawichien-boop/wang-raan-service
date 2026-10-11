@@ -77,10 +77,11 @@
         "feat-004"
       ],
       "gate": "GET /health ตอบ 200 { status: 'healthy', database: 'connected' } เมื่อระบบพร้อม และตอบ 503 เมื่อฐานข้อมูลมีปัญหา",
-      "status": "not-started",
+      "status": "done",
       "role": "api",
       "summary": "ทำ Public Health Check endpoint (GET /health) ตรวจสอบความพร้อมของ Server และ PostgreSQL",
-      "sprint": 1
+      "sprint": 1,
+      "evidence": "เพิ่ม src/modules/health (GET /health, config.auth none, probe SELECT 1 timeout 2s, cache-control no-store); ตอบตาม openapi Health schema: 200 {status:ok, version, database:ok} / 503 {status:degraded, version, database:unavailable} (gate เดิมเขียน healthy/connected ซึ่งขัดสัญญา จึงยึด openapi.yaml); version จาก APP_VERSION หรือ package.json; server.ts สร้าง pg pool, ดัก idle client error, ปิด pool ตอน onClose; make test 45/45, make lint, make contract ผ่าน; smoke test PostgreSQL 16 จริง: DB ขึ้น→200, หยุด DB→503 ทันทีและ server ไม่ล่ม, log ไม่มี credentials"
     },
     {
       "id": "feat-006",

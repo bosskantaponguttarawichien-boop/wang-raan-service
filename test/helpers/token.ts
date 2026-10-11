@@ -5,6 +5,7 @@ export const TEST_SECRET = 'test-internal-token-secret-0123456789abcdef';
 export const TEST_CONFIG: AppConfig = {
   internalTokenSecret: TEST_SECRET,
   logLevel: 'silent',
+  version: '9.9.9-test',
 };
 
 export interface TokenOptions {

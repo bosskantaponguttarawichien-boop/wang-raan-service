@@ -7,10 +7,17 @@ describe('loadConfig', () => {
     expect(() => loadConfig({ INTERNAL_TOKEN_SECRET: 'short' })).toThrow(/at least 32/);
   });
 
-  it('parses a valid environment with default log level', () => {
+  it('parses a valid environment with default log level and package version', () => {
     expect(loadConfig({ INTERNAL_TOKEN_SECRET: 'x'.repeat(32) })).toEqual({
       internalTokenSecret: 'x'.repeat(32),
       logLevel: 'info',
+      version: '0.1.0',
     });
+  });
+
+  it('prefers APP_VERSION set at deploy time', () => {
+    expect(loadConfig({ INTERNAL_TOKEN_SECRET: 'x'.repeat(32), APP_VERSION: ' 2026.10.11-abc123 ' }).version).toBe(
+      '2026.10.11-abc123',
+    );
   });
 });
