@@ -157,7 +157,7 @@ describe('share links (PostgreSQL)', () => {
     expect((await ctx.pool.query('SELECT revoked_at FROM share_links')).rows[0].revoked_at).toEqual(revokedAt);
   });
 
-  it('updates expiry on active links and answers 410 for revoked or expired ones', async () => {
+  it('updates expiry on active and expired links and answers 410 for revoked ones', async () => {
     const active = (await share()).json();
     const revoked = (await share()).json();
     const expired = (await share({ expiresAt: inDays(1) })).json();
@@ -177,10 +177,10 @@ describe('share links (PostgreSQL)', () => {
       url: `/v1/shares/${revoked.shareKey}`,
       payload: { expiresAt: null },
     });
-    const lapsed = await ctx.as(ALICE, {
+    const renewed = await ctx.as(ALICE, {
       method: 'PATCH',
       url: `/v1/shares/${expired.shareKey}`,
-      payload: { expiresAt: null },
+      payload: { expiresAt: newExpiry },
     });
     const missingField = await ctx.as(ALICE, { method: 'PATCH', url: `/v1/shares/${active.shareKey}`, payload: {} });
 
@@ -188,8 +188,28 @@ describe('share links (PostgreSQL)', () => {
     expect(updated.json()).toMatchObject({ status: 'active', expiresAt: newExpiry });
     expect(gone.statusCode).toBe(410);
     expect(gone.json().error.code).toBe('SHARE_REVOKED');
-    expect(lapsed.statusCode).toBe(410);
-    expect(lapsed.json().error.code).toBe('SHARE_EXPIRED');
+    expect(renewed.statusCode).toBe(200);
+    expect(renewed.json()).toMatchObject({ status: 'active', expiresAt: newExpiry });
     expect(missingField.statusCode).toBe(400);
+  });
+
+  it('counts renewing an expired link against the share cap', async () => {
+    const keys: string[] = [];
+    for (let i = 0; i < 20; i += 1) keys.push((await share()).json().shareKey);
+    await ctx.pool.query("UPDATE share_links SET expires_at = now() - interval '1 second' WHERE share_key = $1", [
+      keys[0],
+    ]);
+    const replacement = await share();
+    const renew = () => ctx.as(ALICE, { method: 'PATCH', url: `/v1/shares/${keys[0]}`, payload: { expiresAt: null } });
+
+    const limited = await renew();
+    await ctx.as(ALICE, { method: 'DELETE', url: `/v1/shares/${replacement.json().shareKey}` });
+    const renewed = await renew();
+
+    expect(replacement.statusCode).toBe(201);
+    expect(limited.statusCode).toBe(409);
+    expect(limited.json().error.code).toBe('SHARE_LIMIT_REACHED');
+    expect(renewed.statusCode).toBe(200);
+    expect(renewed.json()).toMatchObject({ status: 'active', expiresAt: null });
   });
 });

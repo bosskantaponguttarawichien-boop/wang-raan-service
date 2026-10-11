@@ -17,6 +17,12 @@ import type { PublicShare, ShareLink } from './shares.schemas.js';
 
 const layoutNotFound = () => notFound('layout not found');
 const shareNotFound = () => notFound('share link not found');
+const shareLimitReached = () =>
+  new AppError(
+    409,
+    'SHARE_LIMIT_REACHED',
+    `active share link limit of ${MAX_ACTIVE_SHARES_PER_LAYOUT} reached for this layout`,
+  );
 
 /** ลิงก์ที่ใช้ไม่ได้แล้วตอบ 410 — revoked มาก่อน expired */
 function assertShareUsable(row: { expires_at: Date | null; revoked_at: Date | null }, now: Date): void {
@@ -63,11 +69,7 @@ export class SharesService {
       if (stored.validation.status === 'blocked') throw layoutBlocked(stored.validation);
 
       if ((await repository.countActiveShares(client, ownerId, layoutId)) >= MAX_ACTIVE_SHARES_PER_LAYOUT) {
-        throw new AppError(
-          409,
-          'SHARE_LIMIT_REACHED',
-          `active share link limit of ${MAX_ACTIVE_SHARES_PER_LAYOUT} reached for this layout`,
-        );
+        throw shareLimitReached();
       }
 
       const row = await repository.insertShare(client, {
@@ -92,7 +94,15 @@ export class SharesService {
       const current = await repository.findOwnedShare(client, ownerId, shareKey, { forUpdate: true });
       if (!current) throw shareNotFound();
 
-      assertShareUsable(current, now);
+      const status = shareStatus({ expiresAt: current.expires_at, revokedAt: current.revoked_at }, now);
+      if (status === 'revoked') throw new AppError(410, 'SHARE_REVOKED', 'share link has been revoked');
+      // ต่ออายุลิงก์ที่หมดอายุ = กลับมาใช้งานได้ จึงนับโควตาเหมือนสร้างใหม่ (ล็อกแถวผังเหมือน create กันเกินโควตาจากคำขอพร้อมกัน)
+      if (status === 'expired') {
+        await findLayout(client, ownerId, current.layout_id, { forUpdate: true });
+        if ((await repository.countActiveShares(client, ownerId, current.layout_id)) >= MAX_ACTIVE_SHARES_PER_LAYOUT) {
+          throw shareLimitReached();
+        }
+      }
 
       return repository.toShareLink(await repository.updateShareExpiry(client, ownerId, shareKey, expiresAt), now);
     });
