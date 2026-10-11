@@ -6,6 +6,7 @@ export const TEST_CONFIG: AppConfig = {
   internalTokenSecret: TEST_SECRET,
   logLevel: 'silent',
   version: '9.9.9-test',
+  contactWebhookUrl: null,
 };
 
 export interface TokenOptions {

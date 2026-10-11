@@ -12,6 +12,7 @@ describe('loadConfig', () => {
       internalTokenSecret: 'x'.repeat(32),
       logLevel: 'info',
       version: '0.1.0',
+      contactWebhookUrl: null,
     });
   });
 

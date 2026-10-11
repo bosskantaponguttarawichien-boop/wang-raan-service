@@ -53,6 +53,7 @@ export function registerErrorHandler(app: FastifyInstance): void {
       request.log.info({ code: appError.code, statusCode: appError.statusCode }, 'request rejected');
     }
 
+    if (appError.extras.retryAfter !== undefined) reply.header('retry-after', String(appError.extras.retryAfter));
     return reply.status(appError.statusCode).send(appError.toBody());
   });
 

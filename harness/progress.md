@@ -98,3 +98,13 @@
 - Merge Guest: ล็อกสองผู้ใช้ตามลำดับ id (กัน deadlock), ย้ายผัง (id ชน → `<id>-guest-copy`, `-guest-copy-2`, … ไม่เกิน 128 ตัว และคำนวณ `validateLayout` ใหม่เพราะ `layoutRevision` ผูกกับ id), ย้ายลิงก์แชร์ (แก้ `layout_id` ตามชื่อใหม่) และข้อความติดต่อ แล้วลบบัญชี Guest; เรียกซ้ำได้ผล 0
 - การตัดสินใจ: merge ไม่ตรวจโควตา 200 ผัง เพราะสัญญาไม่มี error code ให้ endpoint นี้
 - QA: integration 44/44 (รวมเทส rollback โดยใช้ trigger ทำให้ล้มกลางทาง), unit 51/51, `make lint`, `make contract` ผ่าน
+## [2026-10-11 16:00] feat-010: Contact Messages & Database Rate Limiter
+
+- `src/modules/contact/`: `POST /v1/contact-messages` (`auth: 'anonymous'`, bodyLimit 8 KB) → 202 `{ id, receivedAt }`; ผู้ใช้ที่ล็อกอินผูก `user_id`
+- schema = `ContactSchema` ของ core ตัด `website` (honeypot) ออก — strict + trim; ไม่มี/ผิด `X-Client-IP` → 400 INVALID_REQUEST
+- `src/services/rate-limiter.ts`: fixed window 10 นาทีตาม epoch, 3 มิติ (`contact:ip:<ip>` 5, `contact:user:<sub>` 5, `contact:global` 50) — upsert ตามลำดับ key ใน transaction เดียวกับการ insert ข้อความ; เกินแล้ว rollback ทั้งหมด จึงไม่นับคำขอที่ถูกปฏิเสธ
+- error handler ใส่ header `Retry-After` ทุกครั้งที่ error มี `retryAfter`
+- `src/services/notifier.ts`: webhook Discord/Slack (`CONTACT_WEBHOOK_URL`, timeout 5s, ตัดข้อความ ≤ 1900 ตัว) ยิงหลัง commit แบบไม่รอ; ล้มเหลวแค่ log warn โดยไม่มี PII; ไม่ตั้ง URL = noop
+- `src/services/rate-limit-janitor.ts`: ลบหน้าต่างเก่ากว่า 1 ชั่วโมงทุก 10 นาที (เริ่ม/หยุดใน `server.ts`)
+- `buildApp` รับ `notifier` และ `clock` (ใช้ในเทสไม่ให้ข้ามขอบหน้าต่าง)
+- QA: unit 56/56, integration 53/53 (รวมยิงพร้อมกัน 60 คำขอได้ 202 พอดี 50), `make lint`, `make contract` ผ่าน

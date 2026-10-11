@@ -152,10 +152,11 @@
         "feat-004"
       ],
       "gate": "บันทึกข้อความลง DB สำเร็จ, เรียกเกิน limit ตอบ 429 พร้อม Retry-After header, schema validation ถูกต้องตาม ContactSchema",
-      "status": "not-started",
+      "status": "done",
       "role": "api",
       "summary": "ทำ Contact Message API พร้อม Fixed Window Database Rate Limiter และ Notification Dispatcher",
-      "sprint": 2
+      "sprint": 2,
+      "evidence": "เพิ่ม src/modules/contact (POST /v1/contact-messages, auth anonymous, bodyLimit 8KB), src/services/rate-limiter.ts (fixed window 10 นาทีบน rate_limits: ip 5, user 5, global 50; upsert เรียง key ใน transaction เดียวกับ insert แล้ว rollback เมื่อเกิน — ไม่กินโควตา), 429 RATE_LIMITED + Retry-After header + retryAfter, schema = ContactSchema ของ core ไม่รวม honeypot, ไม่มี X-Client-IP → 400; notifier webhook Discord/Slack (CONTACT_WEBHOOK_URL) แบบ fire-and-forget หลัง commit ไม่ log PII; rate-limit janitor ลบแถว >1 ชั่วโมงทุก 10 นาที; ทดสอบยิงพร้อมกัน 60 คำขอผ่านพอดี 50; unit 56 + integration 53, make lint/contract ผ่าน"
     },
     {
       "id": "feat-011",
