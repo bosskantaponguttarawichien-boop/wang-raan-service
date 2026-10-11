@@ -13,7 +13,7 @@ import {
   shareStatus,
   UpdateShareRequestSchema,
 } from './shares.schemas.js';
-import type { ShareLink } from './shares.schemas.js';
+import type { PublicShare, ShareLink } from './shares.schemas.js';
 
 const layoutNotFound = () => notFound('layout not found');
 const shareNotFound = () => notFound('share link not found');
@@ -102,5 +102,21 @@ export class SharesService {
     if (!isShareKey(shareKey) || !(await repository.revokeShare(this.pool, ownerId, shareKey))) {
       throw shareNotFound();
     }
+  }
+
+  /** หน้าแชร์สาธารณะ — ใครถือ token ที่ถูกต้อง (รวม anonymous) ก็เปิดได้ */
+  async getPublic(shareKey: string): Promise<PublicShare> {
+    const row = isShareKey(shareKey) ? await repository.findPublicShare(this.pool, shareKey) : null;
+    if (!row) throw shareNotFound();
+
+    assertShareUsable(row, this.now());
+
+    // ประกอบ response ทีละฟิลด์ — ไม่ส่งต่อแถวจาก DB ตรง ๆ เพื่อไม่ให้ฟิลด์อื่นหลุดออกไป
+    return {
+      layout: row.layout,
+      validation: row.validation,
+      createdAt: row.created_at.toISOString(),
+      expiresAt: row.expires_at?.toISOString() ?? null,
+    };
   }
 }

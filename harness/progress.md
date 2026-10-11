@@ -82,3 +82,10 @@
 - status คำนวณตอนตอบ (revoked ก่อน expired); PATCH ลิงก์ revoked/expired → 410 SHARE_REVOKED/SHARE_EXPIRED; DELETE ตั้ง `revoked_at` ครั้งแรกเท่านั้น (idempotent)
 - ลิงก์/ผังของผู้อื่น และ shareKey ผิดรูปแบบ → 404
 - QA: unit 49/49, integration 27/27, `make lint`, `make contract` ผ่าน
+## [2026-10-11 15:15] feat-008: Public Share Viewer API
+
+- `GET /v1/public/shares/{shareKey}` ใน `shares.routes.ts` ตั้ง `config: { auth: 'anonymous' }` — ยังต้องมี internal token ที่ถูกต้อง
+- repository SELECT เฉพาะ `layout, validation, created_at, expires_at, revoked_at` (ไม่แตะ `owner_id`) และ service ประกอบ response ทีละฟิลด์ตาม `PublicShare`
+- 410 SHARE_REVOKED / SHARE_EXPIRED (revoked ก่อน; ใช้ helper เดียวกับ PATCH), 404 คีย์ไม่มี/ผิดรูป/เจ้าของถูกลบบัญชี
+- ไม่บังคับ `X-Client-IP` และยังไม่จำกัดอัตราเรียกบน endpoint นี้ — สัญญาไม่ได้กำหนดตัวเลขหรือ 400 ไว้
+- QA: integration 34/34 (เพิ่ม 7), unit 49/49, `make lint`, `make contract` ผ่าน

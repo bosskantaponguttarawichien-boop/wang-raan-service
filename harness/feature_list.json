@@ -121,10 +121,11 @@
         "feat-007"
       ],
       "gate": "เข้าถึงได้แบบ anonymous, ไม่มี owner info หลุดใน payload, ลิงก์ที่ revoke หรือหมดอายุตอบ 410 GONE, ไม่พบคืน 404",
-      "status": "not-started",
+      "status": "done",
       "role": "api",
       "summary": "ทำ Public Share Viewer API (GET /v1/public/shares/{shareKey}) นิรนาม ปลอดภัย และจัดการสถานะ 410 GONE",
-      "sprint": 2
+      "sprint": 2,
+      "evidence": "เพิ่ม GET /v1/public/shares/{shareKey} (config.auth anonymous — ต้องมี token แต่ sub เป็น anonymous ได้), SELECT ไม่ดึง owner_id และประกอบ response ทีละฟิลด์ (layout, validation, createdAt, expiresAt), 410 SHARE_REVOKED/SHARE_EXPIRED (revoked มาก่อน), 404 คีย์ไม่มี/ผิดรูป/เจ้าของถูกลบ; integration 7 เคส (รวมแก้ผังทีหลัง snapshot ไม่เปลี่ยน, ลบผัง → 410); unit 49 + integration 34, make lint/contract ผ่าน"
     },
     {
       "id": "feat-009",

@@ -25,4 +25,10 @@ export function registerShareRoutes(app: FastifyInstance, pool: Pool): void {
     await service.revoke(requireUserId(request), request.params.shareKey);
     return reply.status(204).send();
   });
+
+  app.get<{ Params: ShareKeyParams }>(
+    '/v1/public/shares/:shareKey',
+    { config: { auth: 'anonymous' } },
+    async (request) => service.getPublic(request.params.shareKey),
+  );
 }

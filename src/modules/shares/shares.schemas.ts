@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { StoreLayout, ValidationResult } from '@bosskantaponguttarawichien-boop/wang-raan-core';
 
 export const MAX_ACTIVE_SHARES_PER_LAYOUT = 20;
 export const MAX_SHARE_LIFETIME_DAYS = 365;
@@ -14,6 +15,14 @@ export interface ShareLink {
   createdAt: string;
   expiresAt: string | null;
   revokedAt: string | null;
+}
+
+/** ตรงกับ `components.schemas.PublicShare` — ห้ามมีข้อมูลเจ้าของ */
+export interface PublicShare {
+  layout: StoreLayout;
+  validation: ValidationResult;
+  createdAt: string;
+  expiresAt: string | null;
 }
 
 export interface ShareKeyParams {
