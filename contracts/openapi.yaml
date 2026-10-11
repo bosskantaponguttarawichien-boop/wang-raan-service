@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Wang-Raan Backend API
-  version: 1.1.0
+  version: 1.2.0
   summary: สัญญา API ระหว่าง BFF (Next.js) กับ Backend (TypeScript)
   description: |
     สัญญานี้คือ "ข้อตกลง" ที่ BFF ใช้เรียก Backend — Backend ต้องทำตามทุก endpoint
@@ -235,6 +235,9 @@ paths:
       tags: [shares]
       operationId: updateShare
       summary: เปลี่ยนวันหมดอายุของลิงก์ (เจ้าของเท่านั้น)
+      description: |
+        ต่ออายุลิงก์ที่หมดอายุแล้วได้ (กลับมาใช้งานได้) — นับรวมโควตา 20 ลิงก์ที่ใช้งานได้ต่อผัง (เกิน = 409 `SHARE_LIMIT_REACHED`)
+        ลิงก์ที่ยกเลิกแล้วแก้ไม่ได้ (410 `SHARE_REVOKED`)
       requestBody:
         required: true
         content:
@@ -250,7 +253,16 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
-        "410": { $ref: "#/components/responses/ShareGone" }
+        "409":
+          description: "`SHARE_LIMIT_REACHED` — ต่ออายุลิงก์ที่หมดอายุแล้วจะเกินโควตา"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "410":
+          description: "ลิงก์ถูกยกเลิก (`SHARE_REVOKED`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
         "429": { $ref: "#/components/responses/RateLimited" }
     delete:
       tags: [shares]

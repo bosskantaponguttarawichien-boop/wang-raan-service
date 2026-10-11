@@ -119,6 +119,7 @@ export async function userFrom(request: Request): Promise<string | null> {
    - ยกเลิก = ตั้ง `revokedAt` (ไม่ลบแถว) หน้าแชร์จะตอบ 410 `SHARE_REVOKED` ได้
    - หมดอายุ → 410 `SHARE_EXPIRED`; `expiresAt` ต้องอยู่ในอนาคตและไม่เกิน 365 วัน
    - ลิงก์ที่ใช้งานได้ต่อผัง ≤ 20
+   - เจ้าของต่ออายุลิงก์ที่หมดอายุแล้วได้ (`PATCH`) — นับโควตา 20 ลิงก์ด้วย; ลิงก์ที่ยกเลิกแล้วแก้ไม่ได้ (410 `SHARE_REVOKED`)
    - response สาธารณะห้ามมี id เจ้าของ
 5. **ขนาด body**: ผัง ≤ 512 KB, ข้อความติดต่อ ≤ 8 KB, อื่น ๆ ≤ 1 KB → 413
 6. **โควตา**: ผังต่อผู้ใช้ ≤ 200 → 409 `LAYOUT_LIMIT_REACHED`
