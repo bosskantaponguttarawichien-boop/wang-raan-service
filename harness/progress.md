@@ -73,3 +73,12 @@
 - Middleware: ปิด parser `text/plain` (ต้อง 415), `maxParamLength` 2048 และ `frameworkErrors` ให้ URL เสีย/param ยาวเกินตอบ 404 รูปแบบสัญญา; id เกิน 128 ตัวตอบ 404
 - Integration test infra: `scripts/with-test-db.sh` (Postgres 16 ชั่วคราวผ่าน Docker หรือ `TEST_DATABASE_URL`), `vitest.integration.config.ts`, `npm run test:integration`; `make test` รันทั้ง unit และ integration
 - QA: unit 46/46, integration 16/16, `make lint`, `make contract` ผ่าน
+## [2026-10-11 15:05] feat-007: Share Links Management & Snapshots Engine
+
+- `src/services/share-generator.ts`: `crypto.getRandomValues` 32 ไบต์ → base64url 43 ตัว (ทดสอบ 1000 คีย์ไม่ซ้ำและตรง pattern)
+- `src/modules/shares/`: list/create (`/v1/layouts/{layoutId}/shares`), PATCH/DELETE (`/v1/shares/{shareKey}`)
+- สร้างลิงก์ใน transaction ที่ `SELECT ... FOR UPDATE` แถวผัง → ตรวจ blocked (422), นับลิงก์ active (revoked/expired ไม่นับ) ≤ 20 (409), เก็บ snapshot layout+validation
+- `expiresAt` ต้องอยู่ในอนาคตและ ≤ 365 วัน (400 INVALID_REQUEST + details); POST ไม่มี body = ไม่หมดอายุ
+- status คำนวณตอนตอบ (revoked ก่อน expired); PATCH ลิงก์ revoked/expired → 410 SHARE_REVOKED/SHARE_EXPIRED; DELETE ตั้ง `revoked_at` ครั้งแรกเท่านั้น (idempotent)
+- ลิงก์/ผังของผู้อื่น และ shareKey ผิดรูปแบบ → 404
+- QA: unit 49/49, integration 27/27, `make lint`, `make contract` ผ่าน

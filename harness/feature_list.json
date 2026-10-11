@@ -107,10 +107,11 @@
         "feat-006"
       ],
       "gate": "สร้าง key 43 ตัวอักษร URL-safe, snapshot ผังถูกต้อง, revoke ทำงานทันที, ผู้ใช้เข้าถึงลิงก์ของผู้อื่นตอบ 404",
-      "status": "not-started",
+      "status": "done",
       "role": "api",
       "summary": "ทำ Share Links CRUD APIs พร้อมระบบ Snapshot ผังร้าน, Base64URL Secure Key และ Quota Control",
-      "sprint": 2
+      "sprint": 2,
+      "evidence": "เพิ่ม src/services/share-generator.ts (crypto.getRandomValues 32 ไบต์ → base64url 43 ตัว) และ src/modules/shares (schemas/repository/service/routes): POST/GET /v1/layouts/{id}/shares, PATCH/DELETE /v1/shares/{key}; snapshot layout+validation ตอนสร้าง, โควตา active 20 ต่อผัง ภายใต้ SELECT ... FOR UPDATE (ทดสอบพร้อมกัน), expiresAt อนาคต ≤365 วัน, ผัง blocked → 422, PATCH revoked/expired → 410, DELETE idempotent ตั้ง revoked_at, ของผู้อื่น/คีย์ผิดรูป → 404; unit 49 + integration 27 ผ่าน, make lint/contract ผ่าน"
     },
     {
       "id": "feat-008",

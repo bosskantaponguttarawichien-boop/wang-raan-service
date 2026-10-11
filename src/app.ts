@@ -9,6 +9,7 @@ import { BODY_LIMITS } from './middleware/payload-limiter.js';
 import { generateRequestId, registerRequestContext } from './middleware/request-context.js';
 import { registerHealthRoutes } from './modules/health/health.routes.js';
 import { registerLayoutRoutes } from './modules/layouts/layouts.routes.js';
+import { registerShareRoutes } from './modules/shares/shares.routes.js';
 
 export interface BuildAppOptions {
   config?: AppConfig;
@@ -56,6 +57,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
 
   if (options.database) {
     registerLayoutRoutes(app, options.database);
+    registerShareRoutes(app, options.database);
   }
 
   return app;
