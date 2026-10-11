@@ -119,3 +119,36 @@ export async function deleteLayout(db: Queryable, ownerId: string, layoutId: str
   const result = await db.query('DELETE FROM layouts WHERE owner_id = $1 AND id = $2', [ownerId, layoutId]);
   return (result.rowCount ?? 0) > 0;
 }
+
+export async function listLayoutIds(db: Queryable, ownerId: string): Promise<string[]> {
+  const result = await db.query<{ id: string }>('SELECT id FROM layouts WHERE owner_id = $1', [ownerId]);
+  return result.rows.map((row) => row.id);
+}
+
+/** ล็อกและอ่านผังทั้งหมดของเจ้าของ — ใช้ตอนย้ายผัง Guest */
+export async function lockLayoutsOfOwner(db: Queryable, ownerId: string): Promise<StoredLayout[]> {
+  const result = await db.query<LayoutRow>(
+    `SELECT ${COLUMNS} FROM layouts WHERE owner_id = $1 ORDER BY id FOR UPDATE`,
+    [ownerId],
+  );
+  return result.rows.map(toStoredLayout);
+}
+
+/** ย้ายผังไปยังเจ้าของใหม่ (เปลี่ยน id ได้) โดยคง created_at/updated_at เดิม */
+export async function moveLayout(
+  db: Queryable,
+  move: { fromOwner: string; fromId: string; toOwner: string; layout: StoreLayout; validation: ValidationResult },
+): Promise<void> {
+  await db.query(
+    `UPDATE layouts SET owner_id = $3, id = $4, layout = $5::jsonb, validation = $6::jsonb
+      WHERE owner_id = $1 AND id = $2`,
+    [
+      move.fromOwner,
+      move.fromId,
+      move.toOwner,
+      move.layout.id,
+      JSON.stringify(move.layout),
+      JSON.stringify(move.validation),
+    ],
+  );
+}

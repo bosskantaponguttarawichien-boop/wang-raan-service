@@ -142,3 +142,21 @@ export async function findPublicShare(db: Queryable, shareKey: string): Promise<
   );
   return result.rows[0] ?? null;
 }
+
+/** ย้ายลิงก์ทั้งหมดไปเจ้าของใหม่ พร้อมเปลี่ยน layout_id ตามผังที่ถูกตั้งชื่อใหม่; คืนจำนวนลิงก์ที่ย้าย */
+export async function moveShares(
+  db: Queryable,
+  fromOwner: string,
+  toOwner: string,
+  renamed: { from: string; to: string }[],
+): Promise<number> {
+  for (const { from, to } of renamed) {
+    await db.query('UPDATE share_links SET layout_id = $3 WHERE owner_id = $1 AND layout_id = $2', [
+      fromOwner,
+      from,
+      to,
+    ]);
+  }
+  const result = await db.query('UPDATE share_links SET owner_id = $2 WHERE owner_id = $1', [fromOwner, toOwner]);
+  return result.rowCount ?? 0;
+}

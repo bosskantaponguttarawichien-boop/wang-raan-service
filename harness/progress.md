@@ -89,3 +89,12 @@
 - 410 SHARE_REVOKED / SHARE_EXPIRED (revoked ก่อน; ใช้ helper เดียวกับ PATCH), 404 คีย์ไม่มี/ผิดรูป/เจ้าของถูกลบบัญชี
 - ไม่บังคับ `X-Client-IP` และยังไม่จำกัดอัตราเรียกบน endpoint นี้ — สัญญาไม่ได้กำหนดตัวเลขหรือ 400 ไว้
 - QA: integration 34/34 (เพิ่ม 7), unit 49/49, `make lint`, `make contract` ผ่าน
+## [2026-10-11 15:35] feat-009: User Profile & PDPA Operations
+
+- `src/modules/users/`: `GET/PUT/DELETE /v1/me`, `GET /v1/me/export`, `POST /v1/me/merge-guest`
+- PUT upsert: ฟิลด์ที่ไม่ส่ง = คงค่าเดิม, ส่ง `null` = ล้าง; `provider` ต้องตรงกับ prefix ของ `sub` (400 ถ้าไม่ตรง); ตรวจ email/uri/ความยาวตามสัญญา
+- DELETE (PDPA): ลบ users → cascade layouts/share_links/contact_messages และลบ `rate_limits` key `contact:user:<sub>` ใน transaction เดียว; เรียกซ้ำได้ 204
+- Export: อ่านทุกตารางใน transaction `REPEATABLE READ READ ONLY`; ผู้ใช้ที่ไม่มีข้อมูลได้โปรไฟล์ว่างโดยไม่สร้างแถวใหม่
+- Merge Guest: ล็อกสองผู้ใช้ตามลำดับ id (กัน deadlock), ย้ายผัง (id ชน → `<id>-guest-copy`, `-guest-copy-2`, … ไม่เกิน 128 ตัว และคำนวณ `validateLayout` ใหม่เพราะ `layoutRevision` ผูกกับ id), ย้ายลิงก์แชร์ (แก้ `layout_id` ตามชื่อใหม่) และข้อความติดต่อ แล้วลบบัญชี Guest; เรียกซ้ำได้ผล 0
+- การตัดสินใจ: merge ไม่ตรวจโควตา 200 ผัง เพราะสัญญาไม่มี error code ให้ endpoint นี้
+- QA: integration 44/44 (รวมเทส rollback โดยใช้ trigger ทำให้ล้มกลางทาง), unit 51/51, `make lint`, `make contract` ผ่าน

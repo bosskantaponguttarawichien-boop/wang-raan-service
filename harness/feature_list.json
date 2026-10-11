@@ -137,10 +137,11 @@
         "feat-006"
       ],
       "gate": "merge-guest ทำงานแบบ atomic ผังไม่สูญหายและแก้ id ซ้ำได้, delete user ลบข้อมูลทั้งหมดเกลี้ยงตามกฎหมาย PDPA",
-      "status": "not-started",
+      "status": "done",
       "role": "api",
       "summary": "ทำ User Profile APIs, PDPA Data Export/Deletion และ Atomic Guest-to-User Merge Transaction",
-      "sprint": 2
+      "sprint": 2,
+      "evidence": "เพิ่ม src/modules/users (schemas/repository/service/routes): GET/PUT/DELETE /v1/me, GET /v1/me/export, POST /v1/me/merge-guest; PUT upsert (ไม่ส่ง=คงเดิม, null=ล้าง, provider ต้องตรงกับ sub); DELETE ลบ users (cascade layouts/share_links/contact_messages) + rate_limits ของผู้ใช้ใน transaction เดียว idempotent; export อ่านใน REPEATABLE READ; merge-guest ล็อกสองผู้ใช้ตามลำดับ id, ย้ายผัง/ลิงก์/ข้อความติดต่อ, id ชน → <id>-guest-copy[-n] (≤128) พร้อม validateLayout ใหม่, ลบ Guest, เรียกซ้ำได้ 0, sub Guest → 400; ทดสอบ rollback ด้วย trigger ให้ล้มกลางทางแล้วข้อมูลไม่เปลี่ยน; unit 51 + integration 44, make lint/contract ผ่าน"
     },
     {
       "id": "feat-010",

@@ -10,6 +10,7 @@ import { generateRequestId, registerRequestContext } from './middleware/request-
 import { registerHealthRoutes } from './modules/health/health.routes.js';
 import { registerLayoutRoutes } from './modules/layouts/layouts.routes.js';
 import { registerShareRoutes } from './modules/shares/shares.routes.js';
+import { registerUserRoutes } from './modules/users/users.routes.js';
 
 export interface BuildAppOptions {
   config?: AppConfig;
@@ -58,6 +59,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   if (options.database) {
     registerLayoutRoutes(app, options.database);
     registerShareRoutes(app, options.database);
+    registerUserRoutes(app, options.database);
   }
 
   return app;
