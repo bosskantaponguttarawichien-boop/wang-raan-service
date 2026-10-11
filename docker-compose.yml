@@ -1,0 +1,45 @@
+# Local development: PostgreSQL 16 + Backend (http://localhost:4000)
+#   docker compose up -d --build
+# build ใช้ ~/.npmrc (จาก `npm login --registry=https://npm.pkg.github.com`) เป็น BuildKit secret
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: wang_raan
+    ports:
+      - '127.0.0.1:5432:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d wang_raan']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  api:
+    build:
+      context: .
+      secrets:
+        - npmrc
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/wang_raan
+      # ค่าสำหรับเครื่อง dev เท่านั้น — ต้องตรงกับ INTERNAL_TOKEN_SECRET ของ BFF ในเครื่อง
+      INTERNAL_TOKEN_SECRET: ${INTERNAL_TOKEN_SECRET:-local-dev-internal-token-secret-change-me}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      CONTACT_WEBHOOK_URL: ${CONTACT_WEBHOOK_URL:-}
+    # ใช้ migration ก่อนเริ่ม server ทุกครั้ง (idempotent + advisory lock)
+    command: ['sh', '-c', 'node dist/db/migrate.js up && exec node dist/server.js']
+    ports:
+      - '127.0.0.1:4000:4000'
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+secrets:
+  npmrc:
+    file: ${HOME}/.npmrc
+
+volumes:
+  postgres-data:

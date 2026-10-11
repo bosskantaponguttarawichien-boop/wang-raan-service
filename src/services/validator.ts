@@ -9,7 +9,7 @@ export type LayoutParseResult =
     }
   | {
       success: false;
-      issues: string[];
+      details: { path: string; message: string }[];
     };
 
 /**
@@ -22,7 +22,7 @@ export function parseAndValidateLayout(payload: unknown): LayoutParseResult {
   if (!parsed.success) {
     return {
       success: false,
-      issues: parsed.error.issues.map((issue) => issue.message),
+      details: parsed.error.issues.map((issue) => ({ path: issue.path.join('.'), message: issue.message })),
     };
   }
 

@@ -32,7 +32,7 @@ describe('layout validator', () => {
       },
     });
 
-    expect(result).toMatchObject({ success: false });
+    expect(result).toMatchObject({ success: false, details: [{ path: 'layout.units' }] });
   });
 
   it('rejects duplicate object ids that OpenAPI alone cannot express', () => {

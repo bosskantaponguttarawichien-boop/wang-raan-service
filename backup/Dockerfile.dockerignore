@@ -1,0 +1,3 @@
+# build จาก root ของ repo (เหมือน Railway) — ส่งเฉพาะสคริปต์เข้า context
+*
+!backup/backup.sh

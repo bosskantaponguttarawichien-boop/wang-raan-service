@@ -4,7 +4,7 @@
 # =============================================================================
 PYTHON  := python3
 
-.PHONY: help init test lint status dev build contract docker-up docker-down
+.PHONY: help init test lint status dev build contract docker-up docker-down docker-build
 
 help:           ## แสดงคำสั่ง (targets) ทั้งหมด
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -16,8 +16,9 @@ init:           ## ตรวจสอบสภาพแวดล้อมแล�
 status:         ## ตรวจสอบความถูกต้องของ Feature List ใน Harness
 	@$(PYTHON) scripts/validate_harness.py
 
-test:           ## รัน Unit Tests ทั้งหมด
-	@if [ -f package.json ]; then npm test; else echo "ยังไม่มี package.json กำลังรอการสร้างใน feat-001"; fi
+test:           ## รัน Unit Tests และ Integration Tests (PostgreSQL ผ่าน Docker หรือ TEST_DATABASE_URL)
+	@npm test
+	@npm run --silent test:integration
 
 lint:           ## ตรวจสอบ Architectural Boundaries และ Linting
 	@./harness/init.sh --check-env-only
@@ -44,8 +45,11 @@ dev:            ## เริ่มต้น Development Server
 build:          ## สร้าง Production Bundle
 	@if [ -f package.json ]; then npm run build; else echo "ยังไม่มี package.json กรุณารัน feat-001 ก่อน"; fi
 
-docker-up:      ## เริ่มรัน Local PostgreSQL ผ่าน Docker Compose
-	@docker compose up -d
+docker-up:      ## build และรัน API + PostgreSQL ผ่าน Docker Compose (http://localhost:4000)
+	@docker compose up -d --build
 
 docker-down:    ## หยุดการทำงานของ Local Docker Compose
 	@docker compose down
+
+docker-build:   ## build production image (ใช้ ~/.npmrc เป็น BuildKit secret)
+	@docker build --secret id=npmrc,src=$(HOME)/.npmrc -t wang-raan-service:local .

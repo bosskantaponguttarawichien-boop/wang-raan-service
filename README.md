@@ -88,7 +88,9 @@ cp .env.example .env
 | `PORT` | พอร์ตสำหรับ HTTP Server | `4000` |
 | `INTERNAL_TOKEN_SECRET` | Secret คีย์สำหรับตรวจสอบ JWT จาก BFF (ต้องตรงกับ BFF) | `your-32-char-secret-key-here...` |
 | `DATABASE_URL` | PostgreSQL Connection URL | `postgresql://postgres:postgres@localhost:5432/wangraan` |
-| `DISCORD_WEBHOOK_URL` | Webhook URL สำหรับรับการแจ้งเตือนฟอร์มติดต่อ (ทางเลือก) | `https://discord.com/api/webhooks/...` |
+| `CONTACT_WEBHOOK_URL` | Discord/Slack incoming webhook สำหรับแจ้งเตือนฟอร์มติดต่อ (ทางเลือก) | `https://discord.com/api/webhooks/...` |
+| `APP_VERSION` | เวอร์ชันที่ `GET /health` รายงาน (ทางเลือก — ค่าเริ่มต้นจาก package.json) | `2026.10.11-abc1234` |
+| `LOG_LEVEL` | ระดับ log ของ Pino (ทางเลือก) | `info` |
 
 ### คำสั่งประจำ (Makefile Commands)
 
@@ -98,12 +100,30 @@ make init        # ตรวจสอบความพร้อมของร�
 make status      # ตรวจสอบสถานะงานใน Harness Feature List
 make lint        # ตรวจสอบ Code Standards, Boundaries และ OpenAPI Spec
 make contract    # ตรวจสอบความถูกต้องของสัญญา API ด้วย Redocly
-make test        # รัน Unit Tests ทั้งหมด
+make test        # รัน Unit Tests + Integration/Contract Tests (PostgreSQL ชั่วคราวผ่าน Docker หรือ TEST_DATABASE_URL)
 make dev         # เริ่มต้น Server ในโหมด Development
 make build       # คอมไพล์ TypeScript สำหรับ Production
-make docker-up   # รัน PostgreSQL Local ผ่าน Docker Compose
+make docker-up   # build และรัน API + PostgreSQL ผ่าน Docker Compose (http://localhost:4000)
 make docker-down # หยุดการทำงานของ Local Docker Compose
+make docker-build # build production image (ใช้ ~/.npmrc เป็น BuildKit secret)
 ```
+
+### Deploy & Backup
+
+- **Image:** `Dockerfile` multi-stage, รันด้วย user `node`, ไม่มี token ใน image — token ของ GitHub Packages ส่งผ่าน BuildKit secret
+  `npmrc` (ไฟล์ `~/.npmrc`) หรือ `NODE_AUTH_TOKEN` (env)
+- **Railway (API):** `railway.json` — build จาก `Dockerfile`, `preDeployCommand` รัน migration, health check ที่ `/health`
+  ตั้ง `DATABASE_URL`, `INTERNAL_TOKEN_SECRET`, `NODE_AUTH_TOKEN` (build secret) และ `APP_VERSION`/`CONTACT_WEBHOOK_URL` ตามต้องการ
+- **Railway (Backup cron):** service แยกที่ใช้ `backup/railway.json` — `backup/backup.sh` รันทุกวัน 02:00 ICT:
+  `pg_dump` → ตรวจไฟล์ด้วย `pg_restore --list` → อัปโหลดขึ้น Cloudflare R2 → ลบไฟล์ที่เก่ากว่า `BACKUP_RETENTION_DAYS` (30)
+  - ตัวแปร: `DATABASE_URL`, `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, (`BACKUP_PREFIX`, `BACKUP_RETENTION_DAYS`)
+  - build arg `PG_MAJOR` ต้องตรงกับเวอร์ชันหลักของ PostgreSQL บน Railway (ค่าเริ่มต้น 16)
+  - retention เกี่ยวกับ PDPA: ข้อมูลที่ผู้ใช้สั่งลบจะหายจาก backup เมื่อไฟล์ครบรอบ retention
+- **กู้คืน:**
+  ```bash
+  aws --endpoint-url https://<account>.r2.cloudflarestorage.com s3 cp s3://<bucket>/wang-raan/<stamp>.dump ./restore.dump
+  pg_restore --exit-on-error --no-owner -d "$TARGET_DATABASE_URL" ./restore.dump
+  ```
 
 ---
 

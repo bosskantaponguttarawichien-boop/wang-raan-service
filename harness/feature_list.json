@@ -62,10 +62,11 @@
         "feat-001"
       ],
       "gate": "Unit tests ตรวจจับ token ถูกต้อง/ผิด/หมดอายุ, กัก anonymous ใน route ที่ไม่อนุญาต (401), error response อยู่ในรูปแบบ { error: { code, message } }",
-      "status": "not-started",
+      "status": "done",
       "role": "auth",
       "summary": "ทำ Middleware ตรวจสอบ Internal JWT (HS256), Tracing Header, Payload Limiter และ Uniform Error Handler",
-      "sprint": 1
+      "sprint": 1,
+      "evidence": "เพิ่ม src/config/env.ts (Zod, secret ≥32), middleware auth (jose HS256, iss/aud, maxTokenAge 300s, tolerance 5s, exp-iat ≤300, sub ≤128, นโยบาย config.auth user|anonymous|none ใน onRequest ก่อน parse body), request-context (X-Request-Id→requestId ใน log + response header, X-Client-IP), BODY_LIMITS (1KB/8KB/512KB), error handler แบบ { error: { code, message } } (413/415/400 INVALID_JSON/INVALID_REQUEST/404/500 ไม่มี stack); test/middleware.test.ts 30 เคส; make test 38/38, make lint, make contract ผ่าน; smoke test บน dist ยืนยัน log มี requestId และไม่มี token"
     },
     {
       "id": "feat-005",
@@ -76,10 +77,11 @@
         "feat-004"
       ],
       "gate": "GET /health ตอบ 200 { status: 'healthy', database: 'connected' } เมื่อระบบพร้อม และตอบ 503 เมื่อฐานข้อมูลมีปัญหา",
-      "status": "not-started",
+      "status": "done",
       "role": "api",
       "summary": "ทำ Public Health Check endpoint (GET /health) ตรวจสอบความพร้อมของ Server และ PostgreSQL",
-      "sprint": 1
+      "sprint": 1,
+      "evidence": "เพิ่ม src/modules/health (GET /health, config.auth none, probe SELECT 1 timeout 2s, cache-control no-store); ตอบตาม openapi Health schema: 200 {status:ok, version, database:ok} / 503 {status:degraded, version, database:unavailable} (gate เดิมเขียน healthy/connected ซึ่งขัดสัญญา จึงยึด openapi.yaml); version จาก APP_VERSION หรือ package.json; server.ts สร้าง pg pool, ดัก idle client error, ปิด pool ตอน onClose; make test 45/45, make lint, make contract ผ่าน; smoke test PostgreSQL 16 จริง: DB ขึ้น→200, หยุด DB→503 ทันทีและ server ไม่ล่ม, log ไม่มี credentials"
     },
     {
       "id": "feat-006",
@@ -91,10 +93,11 @@
         "feat-004"
       ],
       "gate": "ผัง blocked ถูกปฏิเสธด้วย 422 LAYOUT_BLOCKED, ผัง ready/warning บันทึกได้, โควตาเกิน 200 ตอบ 409, ลบผัง revoke share links อัตโนมัติ",
-      "status": "not-started",
+      "status": "done",
       "role": "api",
       "summary": "ทำ Layouts CRUD APIs พร้อมตรวจสอบความปลอดภัยด้วย Core Rule Engine, จัดการโควตา และ Cascade Revoke",
-      "sprint": 2
+      "sprint": 2,
+      "evidence": "เพิ่ม src/modules/layouts (GET list/POST/GET/PUT/DELETE) + users.repository.ensureUser + db/transaction (withTransaction, advisory lock ต่อผู้ใช้); dual-tier validation ก่อนแตะ DB (400 INVALID_LAYOUT_SCHEMA+details, 422 LAYOUT_BLOCKED+validation+issues ระดับ blocked, 400 ID_MISMATCH), 409 LAYOUT_EXISTS/LAYOUT_LIMIT_REACHED (ทดสอบ race 5 คำขอพร้อมกันไม่เกิน 200), 404 ของผู้อื่น, DELETE+revoke share ใน transaction เดียว; ปิด text/plain parser (415), maxParamLength+frameworkErrors; integration test บน PostgreSQL 16 (scripts/with-test-db.sh) 16 เคส; make test (unit 46 + integration 16), make lint, make contract ผ่าน"
     },
     {
       "id": "feat-007",
@@ -104,10 +107,11 @@
         "feat-006"
       ],
       "gate": "สร้าง key 43 ตัวอักษร URL-safe, snapshot ผังถูกต้อง, revoke ทำงานทันที, ผู้ใช้เข้าถึงลิงก์ของผู้อื่นตอบ 404",
-      "status": "not-started",
+      "status": "done",
       "role": "api",
       "summary": "ทำ Share Links CRUD APIs พร้อมระบบ Snapshot ผังร้าน, Base64URL Secure Key และ Quota Control",
-      "sprint": 2
+      "sprint": 2,
+      "evidence": "เพิ่ม src/services/share-generator.ts (crypto.getRandomValues 32 ไบต์ → base64url 43 ตัว) และ src/modules/shares (schemas/repository/service/routes): POST/GET /v1/layouts/{id}/shares, PATCH/DELETE /v1/shares/{key}; snapshot layout+validation ตอนสร้าง, โควตา active 20 ต่อผัง ภายใต้ SELECT ... FOR UPDATE (ทดสอบพร้อมกัน), expiresAt อนาคต ≤365 วัน, ผัง blocked → 422, PATCH revoked/expired → 410, DELETE idempotent ตั้ง revoked_at, ของผู้อื่น/คีย์ผิดรูป → 404; unit 49 + integration 27 ผ่าน, make lint/contract ผ่าน"
     },
     {
       "id": "feat-008",
@@ -117,10 +121,11 @@
         "feat-007"
       ],
       "gate": "เข้าถึงได้แบบ anonymous, ไม่มี owner info หลุดใน payload, ลิงก์ที่ revoke หรือหมดอายุตอบ 410 GONE, ไม่พบคืน 404",
-      "status": "not-started",
+      "status": "done",
       "role": "api",
       "summary": "ทำ Public Share Viewer API (GET /v1/public/shares/{shareKey}) นิรนาม ปลอดภัย และจัดการสถานะ 410 GONE",
-      "sprint": 2
+      "sprint": 2,
+      "evidence": "เพิ่ม GET /v1/public/shares/{shareKey} (config.auth anonymous — ต้องมี token แต่ sub เป็น anonymous ได้), SELECT ไม่ดึง owner_id และประกอบ response ทีละฟิลด์ (layout, validation, createdAt, expiresAt), 410 SHARE_REVOKED/SHARE_EXPIRED (revoked มาก่อน), 404 คีย์ไม่มี/ผิดรูป/เจ้าของถูกลบ; integration 7 เคส (รวมแก้ผังทีหลัง snapshot ไม่เปลี่ยน, ลบผัง → 410); unit 49 + integration 34, make lint/contract ผ่าน"
     },
     {
       "id": "feat-009",
@@ -132,10 +137,11 @@
         "feat-006"
       ],
       "gate": "merge-guest ทำงานแบบ atomic ผังไม่สูญหายและแก้ id ซ้ำได้, delete user ลบข้อมูลทั้งหมดเกลี้ยงตามกฎหมาย PDPA",
-      "status": "not-started",
+      "status": "done",
       "role": "api",
       "summary": "ทำ User Profile APIs, PDPA Data Export/Deletion และ Atomic Guest-to-User Merge Transaction",
-      "sprint": 2
+      "sprint": 2,
+      "evidence": "เพิ่ม src/modules/users (schemas/repository/service/routes): GET/PUT/DELETE /v1/me, GET /v1/me/export, POST /v1/me/merge-guest; PUT upsert (ไม่ส่ง=คงเดิม, null=ล้าง, provider ต้องตรงกับ sub); DELETE ลบ users (cascade layouts/share_links/contact_messages) + rate_limits ของผู้ใช้ใน transaction เดียว idempotent; export อ่านใน REPEATABLE READ; merge-guest ล็อกสองผู้ใช้ตามลำดับ id, ย้ายผัง/ลิงก์/ข้อความติดต่อ, id ชน → <id>-guest-copy[-n] (≤128) พร้อม validateLayout ใหม่, ลบ Guest, เรียกซ้ำได้ 0, sub Guest → 400; ทดสอบ rollback ด้วย trigger ให้ล้มกลางทางแล้วข้อมูลไม่เปลี่ยน; unit 51 + integration 44, make lint/contract ผ่าน"
     },
     {
       "id": "feat-010",
@@ -146,10 +152,11 @@
         "feat-004"
       ],
       "gate": "บันทึกข้อความลง DB สำเร็จ, เรียกเกิน limit ตอบ 429 พร้อม Retry-After header, schema validation ถูกต้องตาม ContactSchema",
-      "status": "not-started",
+      "status": "done",
       "role": "api",
       "summary": "ทำ Contact Message API พร้อม Fixed Window Database Rate Limiter และ Notification Dispatcher",
-      "sprint": 2
+      "sprint": 2,
+      "evidence": "เพิ่ม src/modules/contact (POST /v1/contact-messages, auth anonymous, bodyLimit 8KB), src/services/rate-limiter.ts (fixed window 10 นาทีบน rate_limits: ip 5, user 5, global 50; upsert เรียง key ใน transaction เดียวกับ insert แล้ว rollback เมื่อเกิน — ไม่กินโควตา), 429 RATE_LIMITED + Retry-After header + retryAfter, schema = ContactSchema ของ core ไม่รวม honeypot, ไม่มี X-Client-IP → 400; notifier webhook Discord/Slack (CONTACT_WEBHOOK_URL) แบบ fire-and-forget หลัง commit ไม่ log PII; rate-limit janitor ลบแถว >1 ชั่วโมงทุก 10 นาที; ทดสอบยิงพร้อมกัน 60 คำขอผ่านพอดี 50; unit 56 + integration 53, make lint/contract ผ่าน"
     },
     {
       "id": "feat-011",
@@ -164,10 +171,11 @@
         "feat-010"
       ],
       "gate": "รัน contract tests ผ่าน 100% เทียบกับ OpenAPI v1.1.0, จำลอง request จาก BFF และตรวจ error codes ครบทุกมิติ",
-      "status": "not-started",
+      "status": "done",
       "role": "qa",
       "summary": "สร้างชุดทดสอบ Automated Integration & Contract Verification เทียบกับ OpenAPI v1.1.0 ครบทุกมิติ",
-      "sprint": 3
+      "sprint": 3,
+      "evidence": "เพิ่ม test/helpers/contract.ts (โหลด contracts/openapi.yaml → Ajv 2020 + ajv-formats, resolve components/responses, ตรวจ status ที่ประกาศ/5XX, body schema, header บังคับเช่น Retry-After, 204 ต้องว่าง) และ test/integration/contract.test.ts: ทุก operation มี route จริง, ทุก operation ไม่มี token → 401 และ anonymous ถูกต้องตาม x-allow-anonymous, 45 scenario ครอบ 200/201/202/204/400/401/404/409/410/413/415/422/429/503 ตรวจกับ schema ทั้งหมด; พบช่องว่างสัญญา: ไม่มี 415 ประกาศใน responses (ตรวจด้วย Error shape แทน) และแก้ PUT /v1/me bodyLimit เป็น 4KB เพราะโปรไฟล์ที่ถูกต้องยาวเกิน 1KB ได้; unit 56 + integration 58, make lint/contract ผ่าน"
     },
     {
       "id": "feat-012",
@@ -177,10 +185,11 @@
         "feat-011"
       ],
       "gate": "Docker image build ผ่านและรันได้บน port 4000, docker compose up ใช้งานคู่กับ PostgreSQL ได้, สคริปต์ backup ทดสอบเชื่อมต่อ R2 สำเร็จ",
-      "status": "not-started",
+      "status": "done",
       "role": "devops",
       "summary": "สร้าง Dockerfile, Docker Compose สำหรับ Local Dev, Railway Config และ Backup Pipeline สู่ Cloudflare R2",
-      "sprint": 3
+      "sprint": 3,
+      "evidence": "เพิ่ม Dockerfile multi-stage (node:22-alpine, user node, HEALTHCHECK, token GitHub Packages ผ่าน BuildKit secret npmrc/NODE_AUTH_TOKEN — ตรวจแล้วไม่มี token ใน image, 61 MB), .dockerignore, docker-compose.yml (postgres 16 + api, migrate ก่อน start), railway.json (Dockerfile, preDeployCommand migrate, healthcheck /health), backup/ (Dockerfile PG_MAJOR, backup.sh pg_dump→pg_restore --list→S3/R2→retention 30 วัน, railway.json cron 02:00 ICT); ทดสอบ: docker build ผ่าน, compose up แล้ว health=healthy + ยิงคำขอแบบ BFF ด้วย JWT จริงผ่าน HTTP ครบ flow, backup อัปโหลดเข้า S3-compatible (adobe/s3mock — MinIO image ไม่มีให้ดึงแล้ว) ลบไฟล์เกิน retention และ restore กลับได้ exit 0; ยังไม่ได้ทดสอบกับ R2 จริงเพราะไม่มี credentials; env ว่างนับเป็นไม่ได้ตั้ง; make test (unit 57 + integration 58), make lint/contract/build ผ่าน"
     }
   ]
 }
