@@ -108,3 +108,14 @@
 - `src/services/rate-limit-janitor.ts`: ลบหน้าต่างเก่ากว่า 1 ชั่วโมงทุก 10 นาที (เริ่ม/หยุดใน `server.ts`)
 - `buildApp` รับ `notifier` และ `clock` (ใช้ในเทสไม่ให้ข้ามขอบหน้าต่าง)
 - QA: unit 56/56, integration 53/53 (รวมยิงพร้อมกัน 60 คำขอได้ 202 พอดี 50), `make lint`, `make contract` ผ่าน
+## [2026-10-11 16:30] feat-011: Automated Contract & E2E Integration Test Suite
+
+- `test/helpers/contract.ts`: โหลด `contracts/openapi.yaml` เข้า Ajv 2020 (+ ajv-formats) แล้วตรวจ response จริง: status ต้องประกาศไว้ (หรือ 5XX), body ผ่าน JSON Schema (resolve `$ref` ของ components/responses), header บังคับ (เช่น `Retry-After`) และ 204 ต้องไม่มี body
+- `test/integration/contract.test.ts` บน PostgreSQL จริง:
+  - ทุก operation ในสัญญามี route จริง (`hasRoute`)
+  - ทุก operation ที่มี security: ไม่มี token → 401 (ตรง schema); anonymous → 401 ยกเว้น `x-allow-anonymous`
+  - 45+ scenario ครอบ 200/201/202/204/400/401/404/409/410/413/415/422/429/503 — ทุก response ตรวจกับสัญญา
+- พบและแก้: `PUT /v1/me` ใช้เพดาน 1 KB แต่โปรไฟล์ที่ถูกต้องตาม schema ยาว ~2.6 KB ได้ → เพิ่ม `BODY_LIMITS.profile` 4 KB
+- ช่องว่างของสัญญา (ไม่ได้แก้ openapi.yaml เพราะ sync มาจาก repo หลัก): `UNSUPPORTED_MEDIA_TYPE` อยู่ใน ErrorCode แต่ไม่มี 415 ใน responses ของ endpoint ใด — เทสตรวจ 415 ด้วยรูปแบบ Error แทน
+- เพิ่ม devDependencies: `ajv`, `ajv-formats`, `yaml`
+- QA: unit 56/56, integration 58/58, `make lint`, `make contract` ผ่าน

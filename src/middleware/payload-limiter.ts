@@ -6,5 +6,7 @@
 export const BODY_LIMITS = {
   layout: 512 * 1024,
   contactMessage: 8 * 1024,
+  // โปรไฟล์ที่ถูกต้องตาม schema ยาวได้ ~2.6 KB (image 2048 + email 254 + name 200) — 1 KB จะปฏิเสธคำขอที่ถูกต้อง
+  profile: 4 * 1024,
   default: 1024,
 } as const;

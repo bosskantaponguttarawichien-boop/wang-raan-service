@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { Pool } from 'pg';
 import { requireUserId } from '../../middleware/auth.js';
+import { BODY_LIMITS } from '../../middleware/payload-limiter.js';
 import { UsersService } from './users.service.js';
 
 export function registerUserRoutes(app: FastifyInstance, pool: Pool): void {
@@ -8,7 +9,9 @@ export function registerUserRoutes(app: FastifyInstance, pool: Pool): void {
 
   app.get('/v1/me', async (request) => service.get(requireUserId(request)));
 
-  app.put('/v1/me', async (request) => service.upsert(requireUserId(request), request.body));
+  app.put('/v1/me', { bodyLimit: BODY_LIMITS.profile }, async (request) =>
+    service.upsert(requireUserId(request), request.body),
+  );
 
   app.delete('/v1/me', async (request, reply) => {
     await service.delete(requireUserId(request));

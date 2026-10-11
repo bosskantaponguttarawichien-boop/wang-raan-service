@@ -171,10 +171,11 @@
         "feat-010"
       ],
       "gate": "รัน contract tests ผ่าน 100% เทียบกับ OpenAPI v1.1.0, จำลอง request จาก BFF และตรวจ error codes ครบทุกมิติ",
-      "status": "not-started",
+      "status": "done",
       "role": "qa",
       "summary": "สร้างชุดทดสอบ Automated Integration & Contract Verification เทียบกับ OpenAPI v1.1.0 ครบทุกมิติ",
-      "sprint": 3
+      "sprint": 3,
+      "evidence": "เพิ่ม test/helpers/contract.ts (โหลด contracts/openapi.yaml → Ajv 2020 + ajv-formats, resolve components/responses, ตรวจ status ที่ประกาศ/5XX, body schema, header บังคับเช่น Retry-After, 204 ต้องว่าง) และ test/integration/contract.test.ts: ทุก operation มี route จริง, ทุก operation ไม่มี token → 401 และ anonymous ถูกต้องตาม x-allow-anonymous, 45 scenario ครอบ 200/201/202/204/400/401/404/409/410/413/415/422/429/503 ตรวจกับ schema ทั้งหมด; พบช่องว่างสัญญา: ไม่มี 415 ประกาศใน responses (ตรวจด้วย Error shape แทน) และแก้ PUT /v1/me bodyLimit เป็น 4KB เพราะโปรไฟล์ที่ถูกต้องยาวเกิน 1KB ได้; unit 56 + integration 58, make lint/contract ผ่าน"
     },
     {
       "id": "feat-012",
