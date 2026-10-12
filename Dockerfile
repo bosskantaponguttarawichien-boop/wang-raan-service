@@ -13,10 +13,10 @@ WORKDIR /app
 COPY package.json package-lock.json .npmrc ./
 
 # ติดตั้ง dependency พร้อม credentials จาก secret — คำสั่งเดียวกันใช้ทั้งชุด build และชุด production
+# ไม่ใช้ --mount=type=cache: Railway บังคับ id=s/<service id>-... ที่ผูกกับ service เดียว ไม่งั้น Dockerfile ไม่ผ่าน validation
 FROM base AS deps
 RUN --mount=type=secret,id=npmrc,target=/root/.npmrc,required=false \
     --mount=type=secret,id=NODE_AUTH_TOKEN,env=NODE_AUTH_TOKEN,required=false \
-    --mount=type=cache,target=/root/.npm \
     if [ -n "${NODE_AUTH_TOKEN:-}" ]; then \
       echo "//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}" > /tmp/auth.npmrc; \
       export NPM_CONFIG_USERCONFIG=/tmp/auth.npmrc; \
