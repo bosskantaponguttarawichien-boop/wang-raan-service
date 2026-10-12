@@ -105,15 +105,15 @@ make dev         # เริ่มต้น Server ในโหมด Developmen
 make build       # คอมไพล์ TypeScript สำหรับ Production
 make docker-up   # build และรัน API + PostgreSQL ผ่าน Docker Compose (http://localhost:4000)
 make docker-down # หยุดการทำงานของ Local Docker Compose
-make docker-build # build production image (ใช้ ~/.npmrc เป็น BuildKit secret)
+make docker-build # build production image (ต้องตั้ง NODE_AUTH_TOKEN ที่มีสิทธิ์ read:packages)
 ```
 
 ### Deploy & Backup
 
-- **Image:** `Dockerfile` multi-stage, รันด้วย user `node`, ไม่มี token ใน image — token ของ GitHub Packages ส่งผ่าน BuildKit secret
-  `npmrc` (ไฟล์ `~/.npmrc`) หรือ `NODE_AUTH_TOKEN` (env)
+- **Image:** `Dockerfile` multi-stage, รันด้วย user `node` — token ของ GitHub Packages ส่งเป็น build arg `NODE_AUTH_TOKEN`
+  ใช้เฉพาะ stage ที่ติดตั้ง dependency จึงไม่อยู่ใน image สุดท้าย (Railway ไม่รองรับ `RUN --mount` จึงใช้ BuildKit secret ไม่ได้)
 - **Railway (API):** `railway.json` — build จาก `Dockerfile`, `preDeployCommand` รัน migration, health check ที่ `/health`
-  ตั้ง `DATABASE_URL`, `INTERNAL_TOKEN_SECRET`, `NODE_AUTH_TOKEN` (build secret) และ `APP_VERSION`/`CONTACT_WEBHOOK_URL` ตามต้องการ
+  ตั้ง `DATABASE_URL`, `INTERNAL_TOKEN_SECRET`, `NODE_AUTH_TOKEN` (ใช้ตอน build, สิทธิ์ read:packages อย่างเดียว) และ `APP_VERSION`/`CONTACT_WEBHOOK_URL` ตามต้องการ
 - **Railway (Backup cron):** service แยกที่ใช้ `backup/railway.json` — `backup/backup.sh` รันทุกวัน 02:00 ICT:
   `pg_dump` → ตรวจไฟล์ด้วย `pg_restore --list` → อัปโหลดขึ้น Cloudflare R2 → ลบไฟล์ที่เก่ากว่า `BACKUP_RETENTION_DAYS` (30)
   - ตัวแปร: `DATABASE_URL`, `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, (`BACKUP_PREFIX`, `BACKUP_RETENTION_DAYS`)

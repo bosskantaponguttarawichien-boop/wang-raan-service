@@ -51,5 +51,5 @@ docker-up:      ## build และรัน API + PostgreSQL ผ่าน Docker
 docker-down:    ## หยุดการทำงานของ Local Docker Compose
 	@docker compose down
 
-docker-build:   ## build production image (ใช้ ~/.npmrc เป็น BuildKit secret)
-	@docker build --secret id=npmrc,src=$(HOME)/.npmrc -t wang-raan-service:local .
+docker-build:   ## build production image (ต้องตั้ง NODE_AUTH_TOKEN ที่มีสิทธิ์ read:packages)
+	@docker build --build-arg NODE_AUTH_TOKEN -t wang-raan-service:local .

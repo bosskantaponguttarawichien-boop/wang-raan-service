@@ -2,22 +2,21 @@
 # =============================================================================
 # วางร้าน (Wang-Raan) Backend — multi-stage production image
 #
-# core package อยู่บน GitHub Packages จึงต้องมี token ตอน `npm ci` — ส่งผ่าน BuildKit secret
-# (ไม่ใช่ ARG/ENV) เพื่อไม่ให้ token ติดอยู่ใน layer ใดของ image:
-#   docker build --secret id=npmrc,src=$HOME/.npmrc .                 # ใช้ ~/.npmrc ที่ npm login ไว้
-#   NODE_AUTH_TOKEN=ghp_... docker build --secret id=NODE_AUTH_TOKEN .   # ใช้ token จาก env (CI/Railway)
+# core package อยู่บน GitHub Packages จึงต้องมี token ตอน `npm ci` — ส่งเป็น build arg NODE_AUTH_TOKEN:
+#   NODE_AUTH_TOKEN=ghp_... docker build --build-arg NODE_AUTH_TOKEN .
+# Railway ส่งตัวแปรของ service เป็น build arg ให้เอง แต่ไม่รองรับ RUN --mount (secret/cache) จึงใช้ BuildKit secret ไม่ได้
+# ARG ประกาศเฉพาะใน stage deps — image สุดท้าย (runtime) เริ่มจาก base ใหม่และ copy มาแค่ node_modules/dist จึงไม่มี token
+# ใช้ token ที่มีสิทธิ์ read:packages อย่างเดียว
 # =============================================================================
 
 FROM node:22-alpine AS base
 WORKDIR /app
 COPY package.json package-lock.json .npmrc ./
 
-# ติดตั้ง dependency พร้อม credentials จาก secret — คำสั่งเดียวกันใช้ทั้งชุด build และชุด production
-# ไม่ใช้ --mount=type=cache: Railway บังคับ id=s/<service id>-... ที่ผูกกับ service เดียว ไม่งั้น Dockerfile ไม่ผ่าน validation
+# ติดตั้ง dependency พร้อม credentials จาก build arg — คำสั่งเดียวกันใช้ทั้งชุด build และชุด production
 FROM base AS deps
-RUN --mount=type=secret,id=npmrc,target=/root/.npmrc,required=false \
-    --mount=type=secret,id=NODE_AUTH_TOKEN,env=NODE_AUTH_TOKEN,required=false \
-    if [ -n "${NODE_AUTH_TOKEN:-}" ]; then \
+ARG NODE_AUTH_TOKEN
+RUN if [ -n "${NODE_AUTH_TOKEN:-}" ]; then \
       echo "//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}" > /tmp/auth.npmrc; \
       export NPM_CONFIG_USERCONFIG=/tmp/auth.npmrc; \
     fi; \
