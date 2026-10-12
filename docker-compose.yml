@@ -1,6 +1,6 @@
 # Local development: PostgreSQL 16 + Backend (http://localhost:4000)
 #   docker compose up -d --build
-# build ใช้ ~/.npmrc (จาก `npm login --registry=https://npm.pkg.github.com`) เป็น BuildKit secret
+# build ต้องตั้ง NODE_AUTH_TOKEN (token ที่มีสิทธิ์ read:packages) ใน shell ก่อน
 services:
   postgres:
     image: postgres:16-alpine
@@ -21,8 +21,8 @@ services:
   api:
     build:
       context: .
-      secrets:
-        - npmrc
+      args:
+        NODE_AUTH_TOKEN: ${NODE_AUTH_TOKEN:?ตั้ง NODE_AUTH_TOKEN (read:packages) ก่อน build}
     environment:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/wang_raan
       # ค่าสำหรับเครื่อง dev เท่านั้น — ต้องตรงกับ INTERNAL_TOKEN_SECRET ของ BFF ในเครื่อง
@@ -36,10 +36,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-
-secrets:
-  npmrc:
-    file: ${HOME}/.npmrc
 
 volumes:
   postgres-data:
