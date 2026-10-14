@@ -3,19 +3,6 @@
 > **archive**: เก็บ 5 entry ล่าสุดเท่านั้น — รายการก่อนหน้าจะถูกย้ายไปเก็บที่
 > `harness/archive/session-handoff-archive.md`
 
-## 2026-10-10 17:24 ICT — feat-002 เสร็จ: Core Package & Contract Integration
-
-### Core & Dev
-- package `@bosskantaponguttarawichien-boop/wang-raan-core@1.0.0` ถูก publish และติดตั้งสำเร็จ พร้อม `zod@3.25.76`
-- `.npmrc` กำหนดเฉพาะ GitHub Packages registry scope; local development ใช้ credentials จาก `npm login`
-- เพิ่ม `src/services/validator.ts` เป็นจุดเดียวสำหรับ parse ด้วย shared Zod schema และคำนวณ `validateLayout()`
-
-### QA
-- ผ่าน `npm run build`, `make test` (4/4), `make lint` และ `make contract`
-
-### Next Step
-1. เริ่ม **feat-003**: PostgreSQL infrastructure และ migration architecture
-
 ## 2026-10-10 17:33 ICT — feat-003 เสร็จ: PostgreSQL Infrastructure & Migrations
 
 ### Core & Dev
@@ -94,3 +81,29 @@
 1. ทบทวนและ commit งาน feat-004 ถึง feat-012 (ยังไม่ได้ commit)
 2. ตั้งค่า Railway (API + Postgres + backup cron) และ R2 bucket จริง แล้วทดสอบ deploy/backup ครั้งแรก
 3. แจ้งทีม repo หลักเรื่องช่องว่างของสัญญา (415, เพดาน body ของโปรไฟล์)
+
+## 2026-10-14 22:00 ICT — feat-013 เสร็จ: Identities Schema Migration (ยังไม่มี API)
+
+### Core & Dev
+- migration `002-identities`: เพิ่ม `email` ใน `users_provider_check`, สร้างตาราง `identities` (PK `(provider, provider_account_id)`, FK `user_id` ON DELETE CASCADE, email บังคับ normalize แล้ว), index `identities_user` และ `identities_verified_email`
+- backfill ผู้ใช้เดิม `<provider>-<id>` คนละแถว `email_verified = false` — ไม่รวมบัญชีที่อีเมลซ้ำ, Guest และ id ที่ prefix ไม่ตรง provider ไม่ได้ identity
+- down: ลบ `identities` แล้วคืน CHECK เดิม — ถ้ามีผู้ใช้ provider `email` แล้วจะล้มและ rollback (ตั้งใจไม่ลบบัญชีเงียบ ๆ)
+- `sub` แบบ `usr-<uuid>` ผ่าน auth อยู่แล้ว (ตรวจแค่ความยาว) จึงไม่ต้องแก้ middleware
+
+### QA
+- `make test` (unit 58, integration 61 — มีเทส backfill บน schema แยกที่มีแค่ 001), `make lint`, `make contract`, format ผ่าน
+
+- (00:35 รีวิว) `last_login_at` เป็น NOT NULL DEFAULT now() และ backfill จาก `users.updated_at` — สัญญา `Identity.lastLoginAt` ห้ามเป็น null
+
+### ⚠️ Deploy
+- Railway production เชื่อม GitHub repo นี้แล้ว (API + Postgres online) — **push/merge เข้า `main` = deploy production ทันที** และ `preDeployCommand` รัน migration กับฐานข้อมูลจริง
+- ห้าม merge `feat/identities-migration` เข้า `main` จนกว่าสัญญา v1.3.0 ฝั่ง FE จะ merge และ endpoint พร้อม
+- ยังไม่มี service backup cron บน Railway และบัญชียังเป็น Trial — ตั้งก่อนเปิดใช้จริง (แนะนำเปิด "Wait for CI" ใน Settings → Source)
+
+### Open Questions / Decisions to Confirm
+- สัญญา v1.3.0 อยู่บน branch `feat/login-projects` ของ repo หลัก (push แล้ว รอรีวิว) — ข้อที่ FE ตัดสินเองดู `harness/handoff-fe-accounts.md` §7 ของ repo หลัก
+- `users.provider` ใน API ยังไม่รับ `email` (`AuthProvider` ในสัญญาปัจจุบันยังไม่มี) — เปิดใน DB ไว้ก่อน
+
+### Next Steps
+1. sync `contracts/openapi.yaml` เมื่อ repo หลัก merge สัญญา identities/OTP แล้ว
+2. ทำ `resolve` + กฎผูกบัญชีด้วยอีเมลที่ยืนยันแล้ว, แก้ `PUT /v1/me`, export/delete ให้ครอบคลุม identities

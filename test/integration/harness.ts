@@ -35,7 +35,7 @@ export async function createTestContext(
       });
     },
     async reset() {
-      await pool.query('TRUNCATE users, layouts, share_links, contact_messages, rate_limits CASCADE');
+      await pool.query('TRUNCATE users, identities, layouts, share_links, contact_messages, rate_limits CASCADE');
     },
     async close() {
       await app.close();

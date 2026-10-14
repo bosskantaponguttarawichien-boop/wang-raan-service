@@ -190,6 +190,20 @@
       "summary": "สร้าง Dockerfile, Docker Compose สำหรับ Local Dev, Railway Config และ Backup Pipeline สู่ Cloudflare R2",
       "sprint": 3,
       "evidence": "เพิ่ม Dockerfile multi-stage (node:22-alpine, user node, HEALTHCHECK, token GitHub Packages ผ่าน BuildKit secret npmrc/NODE_AUTH_TOKEN — ตรวจแล้วไม่มี token ใน image, 61 MB), .dockerignore, docker-compose.yml (postgres 16 + api, migrate ก่อน start), railway.json (Dockerfile, preDeployCommand migrate, healthcheck /health), backup/ (Dockerfile PG_MAJOR, backup.sh pg_dump→pg_restore --list→S3/R2→retention 30 วัน, railway.json cron 02:00 ICT); ทดสอบ: docker build ผ่าน, compose up แล้ว health=healthy + ยิงคำขอแบบ BFF ด้วย JWT จริงผ่าน HTTP ครบ flow, backup อัปโหลดเข้า S3-compatible (adobe/s3mock — MinIO image ไม่มีให้ดึงแล้ว) ลบไฟล์เกิน retention และ restore กลับได้ exit 0; ยังไม่ได้ทดสอบกับ R2 จริงเพราะไม่มี credentials; env ว่างนับเป็นไม่ได้ตั้ง; make test (unit 57 + integration 58), make lint/contract/build ผ่าน"
+    },
+    {
+      "id": "feat-013",
+      "name": "Identities Schema Migration",
+      "description": "Migration ตาราง identities (provider + providerAccountId → user), เพิ่ม provider email ใน CHECK ของ users และ backfill identities ให้ผู้ใช้เดิมโดยไม่รวมบัญชีที่อีเมลซ้ำ — ส่วน API รอสัญญาจาก repo หลัก",
+      "dependencies": [
+        "feat-003"
+      ],
+      "gate": "migration up/down ผ่านบน PostgreSQL จริง และ backfill ผู้ใช้เดิมถูกต้อง",
+      "status": "done",
+      "role": "db",
+      "summary": "สร้างตาราง identities และ backfill ผู้ใช้เดิม",
+      "sprint": 4,
+      "evidence": "src/db/migrations/002-identities.ts + test/integration/migrations.test.ts (backfill บน schema แยก, CHECK email normalize, cascade, down ล้มถ้ามีผู้ใช้ email); make test (unit 58 + integration 61), make lint, make contract ผ่าน"
     }
   ]
 }
