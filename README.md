@@ -112,7 +112,10 @@ make docker-build # build production image (ต้องตั้ง NODE_AUTH_T
 
 - **Image:** `Dockerfile` multi-stage, รันด้วย user `node` — token ของ GitHub Packages ส่งเป็น build arg `NODE_AUTH_TOKEN`
   ใช้เฉพาะ stage ที่ติดตั้ง dependency จึงไม่อยู่ใน image สุดท้าย (Railway ไม่รองรับ `RUN --mount` จึงใช้ BuildKit secret ไม่ได้)
-- **Railway (API):** `railway.json` — build จาก `Dockerfile`, `preDeployCommand` รัน migration, health check ที่ `/health`
+  npm อ่าน token จาก env ผ่าน `docker/npmrc` (placeholder) — ห้ามอ้าง token ในข้อความ `RUN` เพราะ build log พิมพ์คำสั่งพร้อมค่าที่แทนแล้ว
+  CMD ของ image รัน `migrate.js up` ก่อน `server.js` ทุกครั้ง (idempotent + advisory lock)
+- **Railway (API):** `railway.json` — build จาก `Dockerfile`, health check ที่ `/health` · migration รันจาก CMD ของ image
+  (service production ไม่ได้อ่าน `railway.json` — Config as Code ไม่ได้ผูกไว้ จึงไม่พึ่ง `preDeployCommand`)
   ตั้ง `DATABASE_URL`, `INTERNAL_TOKEN_SECRET`, `NODE_AUTH_TOKEN` (ใช้ตอน build, สิทธิ์ read:packages อย่างเดียว) และ `APP_VERSION`/`CONTACT_WEBHOOK_URL` ตามต้องการ
 - **Railway (Backup cron):** service แยกที่ใช้ `backup/railway.json` — `backup/backup.sh` รันทุกวัน 02:00 ICT:
   `pg_dump` → ตรวจไฟล์ด้วย `pg_restore --list` → อัปโหลดขึ้น Cloudflare R2 → ลบไฟล์ที่เก่ากว่า `BACKUP_RETENTION_DAYS` (30)

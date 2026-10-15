@@ -3,38 +3,6 @@
 > **archive**: เก็บ 5 entry ล่าสุดเท่านั้น — รายการก่อนหน้าจะถูกย้ายไปเก็บที่
 > `harness/archive/session-handoff-archive.md`
 
-## 2026-10-10 17:33 ICT — feat-003 เสร็จ: PostgreSQL Infrastructure & Migrations
-
-### Core & Dev
-- เพิ่ม `pg` pool, migration runner แบบ transaction + advisory lock, migration state และ CLI migrate/rollback
-- สร้าง schema หลัก 5 ตารางตาม architecture พร้อม indexes ที่จำเป็น
-
-### QA
-- PostgreSQL 16 integration: migrate, idempotent re-run และ rollback ผ่านครบ
-- ผ่าน `make test` (7/7), `make lint`, `make contract` และ format check
-- ลบ PostgreSQL container ชั่วคราวหลังทดสอบแล้ว
-
-### Next Step
-1. เริ่ม **feat-004**: Security, Auth & Tracing Middleware
-
-## 2026-10-11 13:55 ICT — feat-004 เสร็จ: Security, Auth & Tracing Middleware
-
-### Core & Dev
-- `buildApp({ config?, fastify? })` ติดตั้ง pipeline กลาง: error handler → request context (X-Request-Id / X-Client-IP) → auth (onRequest)
-- route ใหม่กำหนดสิทธิ์ด้วย `config: { auth: 'user' | 'anonymous' | 'none' }` (ค่าเริ่มต้น `user`); ใช้ `request.auth.userId` เท่านั้นเป็นตัวตนผู้ใช้
-- route ที่รับ body ใหญ่ต้องตั้ง `bodyLimit: BODY_LIMITS.layout` / `BODY_LIMITS.contactMessage`; ค่าอื่นใช้ 1 KB อัตโนมัติ
-- โยน `AppError(status, code, message, extras)` จาก service เพื่อให้ได้ error format ตามสัญญา; ZodError แปลงเป็น 400 INVALID_REQUEST อัตโนมัติ
-
-### QA
-- ผ่าน `make test` (38/38), `make lint`, `make contract`; smoke test บน build จริงผ่าน
-
-### Notes
-- `X-Request-Id` ที่ไม่มี/ไม่ใช่ UUID จะสร้างใหม่แทนการตอบ 400 (BFF ส่งเสมอ) — `X-Client-IP` ที่บังคับใน feat-008/010 ให้ route ตรวจ `request.clientIp` เอง
-- `GET /health` ใน feat-005 ต้องตั้ง `config: { auth: 'none' }`
-
-### Next Step
-1. เริ่ม **feat-005**: Health Check API (`GET /health`)
-
 ## 2026-10-11 14:15 ICT — feat-005 เสร็จ: Health Check API
 
 ### Core & Dev
@@ -116,3 +84,15 @@
   2. deploy คู่กับ FE PR #11: FE บน `main` ตอนนี้ยังเรียก `PUT /v1/me` พร้อม `provider` → จะได้ 400 (แผงบัญชีของ FE เก่าขึ้น error จนกว่า FE ใหม่จะ deploy)
   3. migration 002 + 003 รันกับฐานข้อมูลจริงอัตโนมัติ (`preDeployCommand`)
 - FE CI job "E2E (Backend จริง)" ต้องตั้ง `OTP_TEST_CODE=123456` ตอนเปิด Backend (แก้ใน repo หลักแล้ว)
+
+## 2026-10-15 13:30 ICT — แก้ token รั่วใน build log + migration ไม่รันตอน deploy (ยังไม่ commit)
+
+- **Token รั่ว:** `RUN` ใน stage deps เคยอ้าง `NODE_AUTH_TOKEN` ในข้อความคำสั่ง → build log บน Railway พิมพ์ค่าออกมา
+  แก้เป็น `COPY docker/npmrc` (placeholder) + `RUN NPM_CONFIG_USERCONFIG=/tmp/auth.npmrc npm ci` — npm อ่านค่าจาก env เอง
+  ตรวจแล้ว: build ในเครื่องด้วย token จริง พบค่า token 0 ครั้งใน build log และ history; npm แทน placeholder ได้ (ทดสอบกับ echo server)
+  ⚠️ token ใน `~/.npmrc` ของเครื่องนี้ใช้ไม่ได้แล้ว (401) — build image ในเครื่องจนจบยังไม่ได้
+- **Migration ไม่รัน:** `railway config migrate status` → "No services in production read Config as Code" = service ไม่ได้อ่าน `railway.json`
+  (serviceManifest ไม่มีค่าจากไฟล์เลย: preDeployCommand/startCommand/healthcheckPath = null, restart retries 10 ไม่ใช่ 5)
+  แก้: CMD ของ image รัน `migrate.js up && exec server.js` (เหมือน docker-compose) · เอา `preDeployCommand`/`startCommand` ออกจาก `railway.json`
+  ⚠️ healthcheck `/health` ยังไม่ถูกตั้งบน service — ตั้งใน dashboard หรือย้ายไป IaC (`railway config migrate`) ภายหลัง
+- `make test` 86/86, `make lint`, `make contract`, `./harness/init.sh` ผ่าน

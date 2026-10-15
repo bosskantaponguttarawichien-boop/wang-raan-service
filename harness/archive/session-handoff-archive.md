@@ -59,3 +59,35 @@
 
 ### Next Step
 1. เริ่ม **feat-003**: PostgreSQL infrastructure และ migration architecture
+
+## 2026-10-10 17:33 ICT — feat-003 เสร็จ: PostgreSQL Infrastructure & Migrations
+
+### Core & Dev
+- เพิ่ม `pg` pool, migration runner แบบ transaction + advisory lock, migration state และ CLI migrate/rollback
+- สร้าง schema หลัก 5 ตารางตาม architecture พร้อม indexes ที่จำเป็น
+
+### QA
+- PostgreSQL 16 integration: migrate, idempotent re-run และ rollback ผ่านครบ
+- ผ่าน `make test` (7/7), `make lint`, `make contract` และ format check
+- ลบ PostgreSQL container ชั่วคราวหลังทดสอบแล้ว
+
+### Next Step
+1. เริ่ม **feat-004**: Security, Auth & Tracing Middleware
+
+## 2026-10-11 13:55 ICT — feat-004 เสร็จ: Security, Auth & Tracing Middleware
+
+### Core & Dev
+- `buildApp({ config?, fastify? })` ติดตั้ง pipeline กลาง: error handler → request context (X-Request-Id / X-Client-IP) → auth (onRequest)
+- route ใหม่กำหนดสิทธิ์ด้วย `config: { auth: 'user' | 'anonymous' | 'none' }` (ค่าเริ่มต้น `user`); ใช้ `request.auth.userId` เท่านั้นเป็นตัวตนผู้ใช้
+- route ที่รับ body ใหญ่ต้องตั้ง `bodyLimit: BODY_LIMITS.layout` / `BODY_LIMITS.contactMessage`; ค่าอื่นใช้ 1 KB อัตโนมัติ
+- โยน `AppError(status, code, message, extras)` จาก service เพื่อให้ได้ error format ตามสัญญา; ZodError แปลงเป็น 400 INVALID_REQUEST อัตโนมัติ
+
+### QA
+- ผ่าน `make test` (38/38), `make lint`, `make contract`; smoke test บน build จริงผ่าน
+
+### Notes
+- `X-Request-Id` ที่ไม่มี/ไม่ใช่ UUID จะสร้างใหม่แทนการตอบ 400 (BFF ส่งเสมอ) — `X-Client-IP` ที่บังคับใน feat-008/010 ให้ route ตรวจ `request.clientIp` เอง
+- `GET /health` ใน feat-005 ต้องตั้ง `config: { auth: 'none' }`
+
+### Next Step
+1. เริ่ม **feat-005**: Health Check API (`GET /health`)

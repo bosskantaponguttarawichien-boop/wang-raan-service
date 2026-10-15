@@ -1,0 +1,3 @@
+# ใช้เฉพาะตอน npm ci ใน Dockerfile — npm อ่านค่า token จาก env NODE_AUTH_TOKEN เอง
+# ไฟล์นี้มีแค่ placeholder ห้ามใส่ token จริง
+//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}

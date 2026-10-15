@@ -14,13 +14,13 @@ WORKDIR /app
 COPY package.json package-lock.json .npmrc ./
 
 # ติดตั้ง dependency พร้อม credentials จาก build arg — คำสั่งเดียวกันใช้ทั้งชุด build และชุด production
+# ห้ามอ้างถึงตัวแปร token ในข้อความ RUN: log ของ build (เช่นบน Railway) พิมพ์คำสั่ง RUN ออกมาพร้อมค่าที่แทนแล้ว
+# docker/npmrc มีแค่ placeholder — npm เป็นคนอ่านค่าจาก env ตอนรัน จึงไม่มี token ในข้อความคำสั่งหรือในไฟล์ของ layer
+# default เป็นค่าว่างเพื่อให้ npm แทน placeholder ได้แม้ไม่ได้ส่ง arg (ติดตั้ง package private ไม่ได้ แต่ไม่ error ตอนโหลด config)
 FROM base AS deps
-ARG NODE_AUTH_TOKEN
-RUN if [ -n "${NODE_AUTH_TOKEN:-}" ]; then \
-      echo "//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}" > /tmp/auth.npmrc; \
-      export NPM_CONFIG_USERCONFIG=/tmp/auth.npmrc; \
-    fi; \
-    npm ci && rm -f /tmp/auth.npmrc
+ARG NODE_AUTH_TOKEN=""
+COPY docker/npmrc /tmp/auth.npmrc
+RUN NPM_CONFIG_USERCONFIG=/tmp/auth.npmrc npm ci && rm -f /tmp/auth.npmrc
 
 FROM deps AS build
 COPY tsconfig.json ./
@@ -39,4 +39,6 @@ USER node
 EXPOSE 4000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||4000)+'/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"
-CMD ["node", "dist/server.js"]
+# รัน migration ก่อนเริ่ม server ทุกครั้ง (idempotent + advisory lock) — ไม่พึ่ง preDeployCommand ของ Railway
+# ซึ่ง service ไม่ได้อ่านจาก railway.json (Config as Code ไม่ได้ผูกกับ service) · exec ให้ node รับ SIGTERM ตรง
+CMD ["sh", "-c", "node dist/db/migrate.js up && exec node dist/server.js"]
