@@ -7,6 +7,9 @@ export const TEST_CONFIG: AppConfig = {
   logLevel: 'silent',
   version: '9.9.9-test',
   contactWebhookUrl: null,
+  production: false,
+  mail: null,
+  otpTestCode: null,
 };
 
 export interface TokenOptions {

@@ -14,7 +14,7 @@
    - `BACKEND_HANDOFF.md` — ข้อกำหนดการเชื่อมต่อกับ BFF, Internal Token, Endpoints และข้อตกลง
    - `architecture.md` — สถาปัตยกรรม Backend, Database Schema (PostgreSQL DDL), Rate Limiter, และ Validation Pipeline
    - `PRD.md` — ฟังก์ชัน, ข้อมูลร้าน, กฎการออกแบบ และ PDPA
-   - `contracts/openapi.yaml` (v1.1.0) — สัญญา API มาตรฐาน Single Source of Truth
+   - `contracts/openapi.yaml` (v1.3.0) — สัญญา API มาตรฐาน Single Source of Truth
    - `SKILL.md` — กฎเหล็กและเช็กลิสต์การพัฒนา Backend
 4. **รัน `./harness/init.sh`** เพื่อตรวจว่า workspace, dependencies, และ Architectural Boundaries พร้อม
 5. **อ่าน `harness/feature_list.json`** เพื่อเลือกงานที่ active และดู dependencies / gates / priorities
@@ -57,10 +57,11 @@
 |---|---|
 | **Zero-Trust Internal JWT** | ทุกคำขอ (ยกเว้น `GET /health`) ต้องมี `Authorization: Bearer <token>`, ตรวจสอบด้วย HS256 ผ่าน `INTERNAL_TOKEN_SECRET`, ตรวจ `iss === "wang-raan-bff"`, `aud === "wang-raan-backend"`, อายุ ≤ 300 วินาที |
 | **User ID จาก Token เท่านั้น** | **ห้ามอ่าน User ID จาก Request Body หรือ Query Parameter เด็ดขาด** ให้ผูกกับ `sub` จาก Token เสมอ |
-| **Anonymous Scope Restriction** | `sub === "anonymous"` อนุญาตเฉพาะ endpoint ที่มี `x-allow-anonymous: true` (`GET /v1/public/shares/:shareKey`, `POST /v1/contact-messages`) — Route อื่นทั้งหมดต้องตอบ **`401 UNAUTHORIZED`** |
+| **Anonymous Scope Restriction** | `sub === "anonymous"` อนุญาตเฉพาะ endpoint ที่มี `x-allow-anonymous: true` (`GET /v1/public/shares/:shareKey`, `POST /v1/contact-messages`, `POST /v1/auth/identities/resolve`, `POST /v1/auth/otp/request`, `POST /v1/auth/otp/verify`) — Route อื่นทั้งหมดต้องตอบ **`401 UNAUTHORIZED`** |
+| **Backend ออก User ID** | บัญชีเกิดจาก `resolve` / `otp/verify` เท่านั้น (`usr-<uuid>`, `guest-<uuid>`; ผู้ใช้เดิม `<provider>-<id>` คง id เดิม) — ผูกบัญชีด้วยอีเมลเฉพาะเมื่อยืนยันแล้วทั้งสองฝั่ง (google/email) · ห้ามตีความ prefix ของ `sub` เป็น provider |
 | **Multi-Tenant 404 Protection** | ทรัพยากรที่เป็นของผู้อื่น หรือไม่มีอยู่จริง ต้องส่งกลับ **`404 NOT_FOUND`** เสมอ (**ห้ามส่ง 403 FORBIDDEN** เพื่อไม่เปิดเผยว่ามี ID นั้นอยู่ในระบบ) |
 | **Dual-Tier Layout Validation** | ก่อนบันทึกผังร้านลง DB ต้อง parse ด้วย Zod และตรวจสอบด้วย `validateLayout()` จาก `@bosskantaponguttarawichien-boop/wang-raan-core` หากสถานะเป็น `blocked` ต้องตอบ **`422 LAYOUT_BLOCKED`** และห้ามบันทึกเด็ดขาด |
-| **100% OpenAPI Compliance** | ทุก Endpoint, Request, Response, Status Code และ Error Format ต้องตรงตาม [`contracts/openapi.yaml`](contracts/openapi.yaml) v1.1.0 อย่างสมบูรณ์ |
+| **100% OpenAPI Compliance** | ทุก Endpoint, Request, Response, Status Code และ Error Format ต้องตรงตาม [`contracts/openapi.yaml`](contracts/openapi.yaml) v1.3.0 อย่างสมบูรณ์ |
 | **Atomic Database Transactions** | การดำเนินการที่กระทบหลายตาราง (Merge Guest, Delete Layout + Revoke Share Links, Delete User Cascade) ต้องทำภายใต้ Database Transaction เสมอ |
 | **Database-backed Rate Limiter** | การจำกัดอัตราเรียกสำหรับ `POST /v1/contact-messages` ต้องใช้ Fixed Window บน PostgreSQL ทั้ง 3 มิติ (IP, User, Global) |
 | **Pure Backend (No UI/DOM)** | โค้ดทั้งหมดใน `src/` ต้องเป็น Pure Node.js/TypeScript **ห้าม import React, Zustand, DOM, หรือ Next.js เด็ดขาด** |
@@ -83,7 +84,7 @@ wang-raan-service/
 │   ├── harness_state.py        # ตัวโหลด state และ merge archive
 │   └── validate_harness.py     # ตัวตรวจจับ Schema, Broken/Cyclic Deps
 ├── contracts/                  # ← สัญญา API ระหว่าง BFF กับ Backend
-│   ├── openapi.yaml            # OpenAPI Spec 3.1.0 (v1.1.0)
+│   ├── openapi.yaml            # OpenAPI Spec 3.1.0 (v1.3.0)
 │   └── redocly.yaml            # Redocly lint configuration
 ├── src/
 │   ├── config/                 # Environment variables & runtime validation (Zod)

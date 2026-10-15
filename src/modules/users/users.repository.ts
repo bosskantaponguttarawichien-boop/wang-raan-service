@@ -1,28 +1,34 @@
 import type { Pool, PoolClient } from 'pg';
 import { unauthorized } from '../../middleware/errors.js';
-import type { AccountExport, UpsertProfileRequest, User } from './users.schemas.js';
+import type { AccountExport, UpdateProfileRequest, User } from './users.schemas.js';
 
-export type AuthProvider = 'guest' | 'google' | 'line' | 'github';
+export type AuthProvider = 'guest' | 'google' | 'line' | 'github' | 'email';
 
-const USER_ID_PATTERN = /^(guest|google|line|github)-.+$/;
+const LEGACY_USER_ID_PATTERN = /^(guest|google|line|github)-.+$/;
 
-/** id ผู้ใช้มีรูปแบบ `<provider>-<providerAccountId>` (guest-<uuid> สำหรับ Guest) */
+/**
+ * provider จาก id รูปแบบเดิม `<provider>-<providerAccountId>` (ก่อนสัญญา v1.3.0) และ `guest-<uuid>`
+ * id ที่ Backend ออกตั้งแต่ v1.3.0 (`usr-<uuid>`) ไม่บอก provider → null
+ */
 export function providerFromUserId(userId: string): AuthProvider | null {
-  const match = USER_ID_PATTERN.exec(userId);
+  const match = LEGACY_USER_ID_PATTERN.exec(userId);
   return match ? (match[1] as AuthProvider) : null;
 }
 
 export function isGuestId(userId: string): boolean {
-  return providerFromUserId(userId) === 'guest';
+  return userId.startsWith('guest-');
 }
 
 /**
- * ตาราง layouts/share_links/contact_messages อ้าง users ด้วย FK — Guest ไม่ผ่าน `PUT /v1/me`
- * จึงต้องสร้างแถวผู้ใช้ขั้นต่ำก่อนเขียนข้อมูลชิ้นแรก (โปรไฟล์จริงมาจาก PUT /v1/me ภายหลัง)
+ * ตาราง layouts/share_links/contact_messages อ้าง users ด้วย FK — ต้องมีแถวผู้ใช้ก่อนเขียนข้อมูลชิ้นแรก
+ * บัญชีใหม่เกิดจาก resolve / otp verify แล้ว; สร้างแถวขั้นต่ำให้เฉพาะ session รูปแบบเดิม (ผู้ใช้/Guest ก่อน v1.3.0)
+ * `usr-…` ที่ไม่มีแถว = บัญชีถูกลบไปแล้ว → 401
  */
 export async function ensureUser(client: PoolClient, userId: string): Promise<void> {
+  const exists = await client.query('SELECT 1 FROM users WHERE id = $1', [userId]);
+  if ((exists.rowCount ?? 0) > 0) return;
   const provider = providerFromUserId(userId);
-  if (provider === null) throw unauthorized('token subject is not a recognised user id');
+  if (provider === null) throw unauthorized('token subject is not a known user');
 
   await client.query('INSERT INTO users (id, provider) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING', [
     userId,
@@ -62,21 +68,22 @@ export async function findUser(db: Queryable, userId: string): Promise<User | nu
   return row ? toUser(row) : null;
 }
 
-/** ฟิลด์ที่ไม่ส่งมาคงค่าเดิม; ส่ง `null` มา = ล้างค่า */
-export async function upsertUser(db: Queryable, userId: string, profile: UpsertProfileRequest): Promise<User> {
+/** อัปเดตโปรไฟล์ — ฟิลด์ที่ไม่ส่งมาคงค่าเดิม, `null` = ล้างค่า; ไม่มีผู้ใช้ → null (ไม่สร้างบัญชี) */
+export async function updateProfile(
+  db: Queryable,
+  userId: string,
+  profile: UpdateProfileRequest,
+): Promise<User | null> {
   const result = await db.query<UserRow>(
-    `INSERT INTO users (id, provider, name, email, image)
-     VALUES ($1, $2, $3, $4, $5)
-     ON CONFLICT (id) DO UPDATE SET
-       provider = EXCLUDED.provider,
-       name = CASE WHEN $6 THEN EXCLUDED.name ELSE users.name END,
-       email = CASE WHEN $7 THEN EXCLUDED.email ELSE users.email END,
-       image = CASE WHEN $8 THEN EXCLUDED.image ELSE users.image END,
+    `UPDATE users SET
+       name = CASE WHEN $5 THEN $2 ELSE name END,
+       email = CASE WHEN $6 THEN $3 ELSE email END,
+       image = CASE WHEN $7 THEN $4 ELSE image END,
        updated_at = now()
+     WHERE id = $1
      RETURNING ${USER_COLUMNS}`,
     [
       userId,
-      profile.provider,
       profile.name ?? null,
       profile.email ?? null,
       profile.image ?? null,
@@ -85,7 +92,8 @@ export async function upsertUser(db: Queryable, userId: string, profile: UpsertP
       profile.image !== undefined,
     ],
   );
-  return toUser(result.rows[0] as UserRow);
+  const row = result.rows[0];
+  return row ? toUser(row) : null;
 }
 
 /** ลบผู้ใช้ — FK `ON DELETE CASCADE` ลบ layouts, share_links และ contact_messages ตามไปด้วย */
@@ -114,7 +122,10 @@ export async function moveContactMessages(db: Queryable, fromUser: string, toUse
   await db.query('UPDATE contact_messages SET user_id = $2 WHERE user_id = $1', [fromUser, toUser]);
 }
 
-/** ตัวนับ rate limit มี id ผู้ใช้อยู่ใน key — ลบทิ้งด้วยเมื่อผู้ใช้ขอลบข้อมูล */
-export async function deleteUserRateLimits(db: Queryable, userId: string): Promise<void> {
-  await db.query('DELETE FROM rate_limits WHERE key = $1', [`contact:user:${userId}`]);
+/** ตัวนับ rate limit มี id ผู้ใช้อยู่ใน key — ลบทิ้งด้วยเมื่อผู้ใช้ขอลบข้อมูล (+ key อื่นที่ผูกกับผู้ใช้ เช่น hash อีเมล) */
+export async function deleteUserRateLimits(db: Queryable, userId: string, extraKeys: string[] = []): Promise<void> {
+  await db.query('DELETE FROM rate_limits WHERE key = ANY($1::text[])', [[`contact:user:${userId}`, ...extraKeys]]);
 }
+
+export { toUser, USER_COLUMNS };
+export type { UserRow };

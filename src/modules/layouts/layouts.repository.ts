@@ -6,6 +6,7 @@ type Queryable = Pool | PoolClient;
 
 interface LayoutRow {
   id: string;
+  name: string;
   layout: StoreLayout;
   validation: ValidationResult;
   created_at: Date;
@@ -14,6 +15,7 @@ interface LayoutRow {
 
 export function toStoredLayout(row: LayoutRow): StoredLayout {
   return {
+    name: row.name,
     layout: row.layout,
     validation: row.validation,
     createdAt: row.created_at.toISOString(),
@@ -21,37 +23,66 @@ export function toStoredLayout(row: LayoutRow): StoredLayout {
   };
 }
 
-const COLUMNS = 'id, layout, validation, created_at, updated_at';
+const COLUMNS = 'id, name, layout, validation, created_at, updated_at';
 
-export async function listLayoutSummaries(db: Queryable, ownerId: string): Promise<LayoutSummary[]> {
+/** ตำแหน่งในลำดับ `updated_at DESC, id ASC` — updated_at เก็บเป็น microsecond จาก epoch (Date ของ JS ละเอียดแค่ ms) */
+export interface PagePosition {
+  updatedAtMicros: string;
+  id: string;
+}
+
+/**
+ * รายการผังทีละหน้า (keyset) — อ่านเกิน 1 แถวเพื่อรู้ว่ามีหน้าถัดไปไหม
+ * `after` = แถวสุดท้ายของหน้าก่อน; คืน `next` เมื่อยังมีแถวเหลือ
+ */
+export async function listLayoutSummaries(
+  db: Queryable,
+  ownerId: string,
+  page: { limit: number; after?: PagePosition | undefined },
+): Promise<{ layouts: LayoutSummary[]; next: PagePosition | null }> {
+  const params: unknown[] = [ownerId, page.limit + 1];
+  let where = 'owner_id = $1';
+  if (page.after) {
+    params.push(page.after.updatedAtMicros, page.after.id);
+    where += ` AND (updated_at < timestamptz 'epoch' + $3::bigint * interval '1 microsecond'
+                OR (updated_at = timestamptz 'epoch' + $3::bigint * interval '1 microsecond' AND id > $4))`;
+  }
   const result = await db.query<{
     id: string;
-    width: number;
-    depth: number;
+    name: string;
+    layout: StoreLayout;
     object_count: number;
     status: ValidationResult['status'];
     updated_at: Date;
+    updated_us: string;
   }>(
-    `SELECT id,
-            (layout->>'width')::float8 AS width,
-            (layout->>'depth')::float8 AS depth,
+    `SELECT id, name, layout,
             jsonb_array_length(layout->'objects') AS object_count,
             validation->>'status' AS status,
-            updated_at
+            updated_at,
+            (extract(epoch FROM updated_at) * 1000000)::bigint::text AS updated_us
        FROM layouts
-      WHERE owner_id = $1
-      ORDER BY updated_at DESC, id`,
-    [ownerId],
+      WHERE ${where}
+      ORDER BY updated_at DESC, id
+      LIMIT $2`,
+    params,
   );
 
-  return result.rows.map((row) => ({
-    id: row.id,
-    width: row.width,
-    depth: row.depth,
-    objectCount: row.object_count,
-    status: row.status,
-    updatedAt: row.updated_at.toISOString(),
-  }));
+  const rows = result.rows.slice(0, page.limit);
+  const last = rows[rows.length - 1];
+  return {
+    layouts: rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      width: row.layout.width,
+      depth: row.layout.depth,
+      objectCount: row.object_count,
+      status: row.status,
+      updatedAt: row.updated_at.toISOString(),
+      layout: row.layout,
+    })),
+    next: result.rows.length > page.limit && last ? { updatedAtMicros: last.updated_us, id: last.id } : null,
+  };
 }
 
 export async function findLayout(
@@ -88,28 +119,31 @@ export async function insertLayout(
   ownerId: string,
   layout: StoreLayout,
   validation: ValidationResult,
+  name: string,
 ): Promise<StoredLayout> {
   const result = await db.query<LayoutRow>(
-    `INSERT INTO layouts (owner_id, id, layout, validation)
-     VALUES ($1, $2, $3::jsonb, $4::jsonb)
+    `INSERT INTO layouts (owner_id, id, name, layout, validation)
+     VALUES ($1, $2, $5, $3::jsonb, $4::jsonb)
      RETURNING ${COLUMNS}`,
-    [ownerId, layout.id, JSON.stringify(layout), JSON.stringify(validation)],
+    [ownerId, layout.id, JSON.stringify(layout), JSON.stringify(validation), name],
   );
   return toStoredLayout(result.rows[0] as LayoutRow);
 }
 
+/** `name` ไม่ส่ง (undefined) = คงชื่อเดิม */
 export async function updateLayout(
   db: Queryable,
   ownerId: string,
   layout: StoreLayout,
   validation: ValidationResult,
+  name?: string,
 ): Promise<StoredLayout | null> {
   const result = await db.query<LayoutRow>(
     `UPDATE layouts
-        SET layout = $3::jsonb, validation = $4::jsonb, updated_at = now()
+        SET layout = $3::jsonb, validation = $4::jsonb, name = COALESCE($5, name), updated_at = now()
       WHERE owner_id = $1 AND id = $2
       RETURNING ${COLUMNS}`,
-    [ownerId, layout.id, JSON.stringify(layout), JSON.stringify(validation)],
+    [ownerId, layout.id, JSON.stringify(layout), JSON.stringify(validation), name ?? null],
   );
   const row = result.rows[0];
   return row ? toStoredLayout(row) : null;

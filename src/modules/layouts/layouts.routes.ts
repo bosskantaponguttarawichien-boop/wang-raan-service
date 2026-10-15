@@ -5,10 +5,10 @@ import { BODY_LIMITS } from '../../middleware/payload-limiter.js';
 import type { LayoutParams } from './layouts.schemas.js';
 import { LayoutsService } from './layouts.service.js';
 
-export function registerLayoutRoutes(app: FastifyInstance, pool: Pool): void {
-  const service = new LayoutsService(pool);
+export function registerLayoutRoutes(app: FastifyInstance, pool: Pool, cursorSecret: string): void {
+  const service = new LayoutsService(pool, cursorSecret);
 
-  app.get('/v1/layouts', async (request) => ({ layouts: await service.list(ownerOf(request)) }));
+  app.get('/v1/layouts', async (request) => service.list(ownerOf(request), request.query));
 
   app.post('/v1/layouts', { bodyLimit: BODY_LIMITS.layout }, async (request, reply) => {
     const stored = await service.create(ownerOf(request), request.body);

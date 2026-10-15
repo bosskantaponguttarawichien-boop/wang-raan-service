@@ -6,7 +6,10 @@ import * as layouts from '../layouts/layouts.repository.js';
 import { MAX_ID_LENGTH } from '../layouts/layouts.schemas.js';
 import * as shares from '../shares/shares.repository.js';
 import * as repository from './users.repository.js';
-import { MergeGuestRequestSchema, UpsertProfileRequestSchema } from './users.schemas.js';
+import { emailHash } from '../auth/email.js';
+import { emailsOfUser, listIdentities } from '../auth/identities.repository.js';
+import { deleteOtps } from '../auth/otp.repository.js';
+import { MergeGuestRequestSchema, UpdateProfileRequestSchema } from './users.schemas.js';
 import type { AccountExport, MergeGuestResult, User } from './users.schemas.js';
 
 const RENAME_SUFFIX = '-guest-copy';
@@ -40,24 +43,29 @@ export class UsersService {
     return user;
   }
 
-  async upsert(userId: string, body: unknown): Promise<User> {
-    const profile = UpsertProfileRequestSchema.parse(body);
-    const expected = repository.providerFromUserId(userId);
-    if (expected === null) throw new AppError(401, 'UNAUTHORIZED', 'token subject is not a recognised user id');
-    if (profile.provider !== expected) {
-      throw new AppError(400, 'INVALID_REQUEST', 'provider does not match the authenticated user', {
-        details: [{ path: 'provider', message: `expected "${expected}"` }],
-      });
-    }
-    return repository.upsertUser(this.pool, userId, profile);
+  /** อัปเดตโปรไฟล์อย่างเดียว — บัญชีเกิดจาก resolve / otp verify เท่านั้น (ไม่มี → 404) */
+  async update(userId: string, body: unknown): Promise<User> {
+    const profile = UpdateProfileRequestSchema.parse(body);
+    const user = await repository.updateProfile(this.pool, userId, profile);
+    if (!user) throw notFound('user not found');
+    return user;
   }
 
-  /** PDPA: ลบโปรไฟล์ ผัง ลิงก์แชร์ ข้อความติดต่อ และตัวนับ rate limit ในคราวเดียว — เรียกซ้ำได้ */
+  /**
+   * PDPA: ลบโปรไฟล์ identities ผัง ลิงก์แชร์ ข้อความติดต่อ รหัส OTP ที่ค้างของอีเมลในบัญชี และตัวนับ rate limit
+   * ในคราวเดียว — เรียกซ้ำได้
+   */
   async delete(userId: string): Promise<void> {
     await withTransaction(this.pool, async (client) => {
       await lockUser(client, userId);
+      const hashes = (await emailsOfUser(client, userId)).map(emailHash);
+      await deleteOtps(client, hashes);
       await repository.deleteUser(client, userId);
-      await repository.deleteUserRateLimits(client, userId);
+      await repository.deleteUserRateLimits(
+        client,
+        userId,
+        hashes.map((hash) => `otp:email:${hash}`),
+      );
     });
   }
 
@@ -82,6 +90,7 @@ export class UsersService {
           createdAt: now.toISOString(),
           updatedAt: now.toISOString(),
         },
+        identities: await listIdentities(client, userId),
         layouts: await layouts.listStoredLayouts(client, userId),
         shares: (await shares.listSharesForOwner(client, userId)).map((row) => shares.toShareLink(row, now)),
         contactMessages: await repository.listContactMessagesForUser(client, userId),

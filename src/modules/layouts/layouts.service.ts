@@ -2,12 +2,45 @@ import type { Pool } from 'pg';
 import type { StoreLayout, ValidationResult } from '@bosskantaponguttarawichien-boop/wang-raan-core';
 import { lockUser, withTransaction } from '../../db/transaction.js';
 import { AppError, notFound } from '../../middleware/errors.js';
+import { PageCursor } from '../../services/page-cursor.js';
 import { parseAndValidateLayout } from '../../services/validator.js';
 import { revokeSharesForLayout } from '../shares/shares.repository.js';
 import { ensureUser } from '../users/users.repository.js';
 import * as repository from './layouts.repository.js';
-import { isValidId, MAX_LAYOUTS_PER_USER } from './layouts.schemas.js';
-import type { LayoutSummary, StoredLayout } from './layouts.schemas.js';
+import {
+  defaultLayoutName,
+  isValidId,
+  LayoutNameSchema,
+  ListLayoutsQuerySchema,
+  MAX_LAYOUTS_PER_USER,
+} from './layouts.schemas.js';
+import type { LayoutPage, StoredLayout } from './layouts.schemas.js';
+import type { PagePosition } from './layouts.repository.js';
+
+const isPagePosition = (value: unknown): value is { u: string; i: string } =>
+  typeof value === 'object' &&
+  value !== null &&
+  typeof (value as { u?: unknown }).u === 'string' &&
+  /^-?\d{1,20}$/.test((value as { u: string }).u) &&
+  typeof (value as { i?: unknown }).i === 'string';
+
+/**
+ * แยก `name` ออกจาก body ก่อนส่ง `{ layout }` ให้ schema ของ core (core 1.0 ยังไม่รู้จัก name และเป็น strict)
+ * name ผิด → 400 INVALID_LAYOUT_SCHEMA เหมือนส่วนอื่นของ body
+ */
+function splitName(body: unknown): { rest: unknown; name: string | undefined } {
+  if (typeof body !== 'object' || body === null || Array.isArray(body) || !('name' in body)) {
+    return { rest: body, name: undefined };
+  }
+  const { name, ...rest } = body as Record<string, unknown>;
+  const parsed = LayoutNameSchema.safeParse(name);
+  if (!parsed.success) {
+    throw new AppError(400, 'INVALID_LAYOUT_SCHEMA', 'name must be 1-80 characters after trimming', {
+      details: parsed.error.issues.map((issue) => ({ path: 'name', message: issue.message })),
+    });
+  }
+  return { rest, name: parsed.data };
+}
 
 const layoutNotFound = () => notFound('layout not found');
 
@@ -15,8 +48,13 @@ const layoutNotFound = () => notFound('layout not found');
  * ด่านตรวจผังสองชั้น: Zod schema ของ core → `validateLayout()`
  * ผล blocked ต้องหยุดก่อนแตะฐานข้อมูลเสมอ
  */
-export function validateForSave(body: unknown): { layout: StoreLayout; validation: ValidationResult } {
-  const result = parseAndValidateLayout(body);
+export function validateForSave(body: unknown): {
+  layout: StoreLayout;
+  validation: ValidationResult;
+  name: string | undefined;
+} {
+  const { rest, name } = splitName(body);
+  const result = parseAndValidateLayout(rest);
 
   if (!result.success) {
     throw new AppError(400, 'INVALID_LAYOUT_SCHEMA', 'layout does not match StoreLayout schema', {
@@ -28,7 +66,7 @@ export function validateForSave(body: unknown): { layout: StoreLayout; validatio
     throw layoutBlocked(result.validation);
   }
 
-  return { layout: result.layout, validation: result.validation };
+  return { layout: result.layout, validation: result.validation, name };
 }
 
 export function layoutBlocked(validation: ValidationResult): AppError {
@@ -39,10 +77,33 @@ export function layoutBlocked(validation: ValidationResult): AppError {
 }
 
 export class LayoutsService {
-  constructor(private readonly pool: Pool) {}
+  private readonly cursors: PageCursor<{ u: string; i: string }>;
 
-  list(ownerId: string): Promise<LayoutSummary[]> {
-    return repository.listLayoutSummaries(this.pool, ownerId);
+  constructor(
+    private readonly pool: Pool,
+    cursorSecret: string,
+  ) {
+    this.cursors = new PageCursor(cursorSecret, 'layouts');
+  }
+
+  /** ใหม่สุดก่อน ทีละหน้า — cursor ปลอม/ของคนอื่น → 400 */
+  async list(ownerId: string, query: unknown): Promise<LayoutPage> {
+    const { limit, cursor } = ListLayoutsQuerySchema.parse(query);
+    let after: PagePosition | undefined;
+    if (cursor) {
+      const position = this.cursors.decode(ownerId, cursor, isPagePosition);
+      if (!position) {
+        throw new AppError(400, 'INVALID_REQUEST', 'invalid cursor', {
+          details: [{ path: 'cursor', message: 'use nextCursor from the previous page' }],
+        });
+      }
+      after = { updatedAtMicros: position.u, id: position.i };
+    }
+    const page = await repository.listLayoutSummaries(this.pool, ownerId, { limit, after });
+    return {
+      layouts: page.layouts,
+      nextCursor: page.next ? this.cursors.encode(ownerId, { u: page.next.updatedAtMicros, i: page.next.id }) : null,
+    };
   }
 
   async get(ownerId: string, layoutId: string): Promise<StoredLayout> {
@@ -52,7 +113,7 @@ export class LayoutsService {
   }
 
   async create(ownerId: string, body: unknown): Promise<StoredLayout> {
-    const { layout, validation } = validateForSave(body);
+    const { layout, validation, name } = validateForSave(body);
 
     return withTransaction(this.pool, async (client) => {
       await lockUser(client, ownerId);
@@ -65,12 +126,13 @@ export class LayoutsService {
         throw new AppError(409, 'LAYOUT_LIMIT_REACHED', `layout limit of ${MAX_LAYOUTS_PER_USER} reached`);
       }
 
-      return repository.insertLayout(client, ownerId, layout, validation);
+      return repository.insertLayout(client, ownerId, layout, validation, name ?? defaultLayoutName(layout));
     });
   }
 
   async update(ownerId: string, layoutId: string, body: unknown): Promise<StoredLayout> {
-    const result = parseAndValidateLayout(body);
+    const { rest, name } = splitName(body);
+    const result = parseAndValidateLayout(rest);
     if (!result.success) {
       throw new AppError(400, 'INVALID_LAYOUT_SCHEMA', 'layout does not match StoreLayout schema', {
         details: result.details,
@@ -83,7 +145,7 @@ export class LayoutsService {
     }
     if (result.validation.status === 'blocked') throw layoutBlocked(result.validation);
 
-    const stored = await repository.updateLayout(this.pool, ownerId, result.layout, result.validation);
+    const stored = await repository.updateLayout(this.pool, ownerId, result.layout, result.validation, name);
     if (!stored) throw layoutNotFound();
     return stored;
   }

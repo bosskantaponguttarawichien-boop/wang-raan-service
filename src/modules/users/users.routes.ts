@@ -10,7 +10,7 @@ export function registerUserRoutes(app: FastifyInstance, pool: Pool): void {
   app.get('/v1/me', async (request) => service.get(requireUserId(request)));
 
   app.put('/v1/me', { bodyLimit: BODY_LIMITS.profile }, async (request) =>
-    service.upsert(requireUserId(request), request.body),
+    service.update(requireUserId(request), request.body),
   );
 
   app.delete('/v1/me', async (request, reply) => {

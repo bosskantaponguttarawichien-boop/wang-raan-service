@@ -204,6 +204,20 @@
       "summary": "สร้างตาราง identities และ backfill ผู้ใช้เดิม",
       "sprint": 4,
       "evidence": "src/db/migrations/002-identities.ts + test/integration/migrations.test.ts (backfill บน schema แยก, CHECK email normalize, cascade, down ล้มถ้ามีผู้ใช้ email); make test (unit 58 + integration 61), make lint, make contract ผ่าน"
+    },
+    {
+      "id": "feat-014",
+      "name": "Contract v1.3.0: Identities resolve, Email OTP, layout names & pagination",
+      "description": "sync contracts/openapi.yaml v1.3.0 จาก repo หลัก · POST /v1/auth/identities/resolve (Guest/OAuth + กติกาผูกบัญชีด้วยอีเมลที่ยืนยันแล้วทั้งสองฝั่ง) · POST /v1/auth/otp/request + verify (hash, ใช้ครั้งเดียว, cooldown 60 วิ, rate limit ต่ออีเมล/IP, ส่งเมลผ่าน Resend) · PUT /v1/me อัปเดตอย่างเดียว · AccountExport.identities · DELETE /v1/me ลบ identities/OTP · layouts.name + GET /v1/layouts แบ่งหน้าด้วย cursor ที่มีลายเซ็น",
+      "dependencies": [
+        "feat-013"
+      ],
+      "gate": "make test / lint / contract ผ่าน และ E2E ของ repo หลัก (make e2e-real) ผ่านกับ Backend นี้",
+      "status": "done",
+      "role": "auth",
+      "summary": "Backend รองรับล็อกอินแบบใหม่ (Backend ออก user id) ชื่อผัง และรายการผังทีละหน้า",
+      "sprint": 4,
+      "evidence": "migration 003-layout-names-otp (layouts.name backfill 'ผังร้าน {w} × {d} ม.', otp_codes เก็บ hash) · src/modules/auth (resolve, otp request/verify, advisory lock กันสร้างบัญชีซ้ำ, ลด attemptsLeft นอก rollback) · src/services/mailer.ts (Resend) · src/services/page-cursor.ts (HMAC, ผูกเจ้าของ) · config RESEND_API_KEY/MAIL_FROM/OTP_TEST_CODE (ห้ามใน production) · make test: unit 59 + integration 86 (auth 21 เคส, layouts paging/cursor ปลอม/ชื่อ code point, contract ทุก endpoint ใหม่) · make lint/contract/format ผ่าน · repo หลัก make e2e-real กับ Backend นี้ (Postgres 16) 90/90"
     }
   ]
 }

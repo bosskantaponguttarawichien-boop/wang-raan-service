@@ -147,3 +147,13 @@
 - harness ของ integration test TRUNCATE `identities` ด้วย; อัปเดต DDL/ER ใน `architecture.md`
 - ยังไม่มี API — รอสัญญา identities/OTP จาก repo หลัก
 - QA: unit 58/58, integration 61/61, `make lint`, `make contract`, format ผ่าน
+
+## [2026-10-15] feat-014: สัญญา v1.3.0 — Identities, Email OTP, ชื่อผัง, แบ่งหน้า
+
+- sync `contracts/openapi.yaml` v1.3.0 · migration `003-layout-names-otp`
+- `POST /v1/auth/identities/resolve` / `otp/request` / `otp/verify` — กติกาผูกบัญชี: identity ก่อน → อีเมลยืนยันแล้วทั้งสองฝั่ง (google/email) → `usr-<uuid>`; ผู้ใช้เดิมได้ id เดิม (identity จาก backfill)
+- OTP: เก็บ hash (HMAC ด้วย secret), เขียนทับเมื่อขอใหม่, cooldown 60 วิ + 5 ครั้ง/10 นาทีต่ออีเมล + 20/10 นาทีต่อ IP, verify 30/10 นาทีต่อ IP; รหัสผิดลด attemptsLeft แบบ commit แม้ตอบ 400
+- production ไม่มี `RESEND_API_KEY` → otp/request ตอบ 503 (ไม่ทำให้ระบบล้มตอน deploy) · `OTP_TEST_CODE` ใช้ได้นอก production เท่านั้น
+- `PUT /v1/me` อัปเดตอย่างเดียว (404), export มี `identities`, ลบบัญชีล้าง identities + OTP + rate limit ที่ผูกอีเมล
+- layouts: `name` (trim, 1–80 code point, ไม่ส่ง = ชื่อเดิม), `GET /v1/layouts?limit&cursor` keyset ระดับ microsecond, cursor มี HMAC ผูกเจ้าของ (ปลอม/ของคนอื่น → 400)
+- QA: unit 59, integration 86, lint/contract/format, E2E repo หลักกับ Backend นี้ 90/90

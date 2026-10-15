@@ -104,8 +104,8 @@ describe('layouts CRUD (PostgreSQL)', () => {
     await create(ALICE, readyLayout('seed'));
     const template = (await ctx.pool.query('SELECT layout, validation FROM layouts WHERE id = $1', ['seed'])).rows[0];
     await ctx.pool.query(
-      `INSERT INTO layouts (owner_id, id, layout, validation)
-       SELECT $1, 'bulk-' || n, $2::jsonb, $3::jsonb FROM generate_series(1, 199) AS n`,
+      `INSERT INTO layouts (owner_id, id, name, layout, validation)
+       SELECT $1, 'bulk-' || n, 'bulk', $2::jsonb, $3::jsonb FROM generate_series(1, 199) AS n`,
       [ALICE, template.layout, template.validation],
     );
 
@@ -119,8 +119,8 @@ describe('layouts CRUD (PostgreSQL)', () => {
     await create(ALICE, readyLayout('seed'));
     const template = (await ctx.pool.query('SELECT layout, validation FROM layouts WHERE id = $1', ['seed'])).rows[0];
     await ctx.pool.query(
-      `INSERT INTO layouts (owner_id, id, layout, validation)
-       SELECT $1, 'bulk-' || n, $2::jsonb, $3::jsonb FROM generate_series(1, 197) AS n`,
+      `INSERT INTO layouts (owner_id, id, name, layout, validation)
+       SELECT $1, 'bulk-' || n, 'bulk', $2::jsonb, $3::jsonb FROM generate_series(1, 197) AS n`,
       [ALICE, template.layout, template.validation],
     );
 
@@ -142,10 +142,106 @@ describe('layouts CRUD (PostgreSQL)', () => {
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({
       layouts: [
-        { id: 'second', width: 8, depth: 8, objectCount: 6, status: 'warning', updatedAt: expect.any(String) },
-        { id: 'first', width: 8, depth: 8, objectCount: 5, status: 'ready', updatedAt: expect.any(String) },
+        {
+          id: 'second',
+          name: 'ผังร้าน 8 × 8 ม.',
+          width: 8,
+          depth: 8,
+          objectCount: 6,
+          status: 'warning',
+          updatedAt: expect.any(String),
+          layout: warningLayout('second'),
+        },
+        {
+          id: 'first',
+          name: 'ผังร้าน 8 × 8 ม.',
+          width: 8,
+          depth: 8,
+          objectCount: 5,
+          status: 'ready',
+          updatedAt: expect.any(String),
+          layout: readyLayout('first'),
+        },
       ],
+      nextCursor: null,
     });
+  });
+
+  it('pages newest first with an opaque cursor until every layout is listed exactly once', async () => {
+    for (let i = 0; i < 5; i += 1) await create(ALICE, readyLayout(`p-${i}`));
+    // updated_at เท่ากัน (ระดับ microsecond) → ลำดับรองตาม id ต้องคงที่ข้ามหน้า
+    await ctx.pool.query(
+      "UPDATE layouts SET updated_at = '2026-10-15T00:00:00.123456Z' WHERE id IN ('p-1', 'p-2', 'p-3')",
+    );
+
+    const ids: string[] = [];
+    let cursor: string | null = null;
+    let pages = 0;
+    do {
+      const url: string = cursor ? `/v1/layouts?limit=2&cursor=${encodeURIComponent(cursor)}` : '/v1/layouts?limit=2';
+      const page = (await ctx.as(ALICE, { url })).json();
+      expect(page.layouts.length).toBeLessThanOrEqual(2);
+      ids.push(...page.layouts.map((l: { id: string }) => l.id));
+      cursor = page.nextCursor;
+      pages += 1;
+    } while (cursor);
+
+    expect(pages).toBe(3);
+    expect(new Set(ids).size).toBe(5);
+    expect(ids.slice(-3)).toEqual(['p-1', 'p-2', 'p-3']);
+  });
+
+  it('rejects forged, tampered or foreign cursors and out-of-range limits with 400', async () => {
+    for (let i = 0; i < 3; i += 1) await create(ALICE, readyLayout(`p-${i}`));
+    await create(BOB, readyLayout('bobs'));
+    const { nextCursor } = (await ctx.as(ALICE, { url: '/v1/layouts?limit=1' })).json();
+    const [body, signature] = (nextCursor as string).split('.');
+    const forged = `${Buffer.from(JSON.stringify({ u: '0', i: 'a' })).toString('base64url')}.${signature}`;
+
+    for (const url of [
+      `/v1/layouts?cursor=${forged}`,
+      `/v1/layouts?cursor=${body}`,
+      '/v1/layouts?cursor=nonsense',
+      '/v1/layouts?limit=0',
+      '/v1/layouts?limit=51',
+      '/v1/layouts?owner=bob',
+    ]) {
+      const response = await ctx.as(ALICE, { url });
+      expect(response.statusCode, url).toBe(400);
+      expect(response.json().error.code, url).toBe('INVALID_REQUEST');
+    }
+    // cursor ของ ALICE ใช้กับ BOB ไม่ได้
+    expect((await ctx.as(BOB, { url: `/v1/layouts?cursor=${encodeURIComponent(nextCursor)}` })).statusCode).toBe(400);
+  });
+
+  it('stores the trimmed name, defaults it from the room size, and keeps it on PUT without a name', async () => {
+    const post = (name: unknown, id: string) =>
+      ctx.as(ALICE, { method: 'POST', url: '/v1/layouts', payload: { name, layout: readyLayout(id) } as object });
+    const named = await post('  ร้านกาแฟสาขาสยาม  ', 'named');
+    expect(named.statusCode).toBe(201);
+    expect(named.json().name).toBe('ร้านกาแฟสาขาสยาม');
+
+    const kept = await ctx.as(ALICE, {
+      method: 'PUT',
+      url: '/v1/layouts/named',
+      payload: { layout: readyLayout('named') },
+    });
+    expect(kept.json().name).toBe('ร้านกาแฟสาขาสยาม');
+    const renamed = await ctx.as(ALICE, {
+      method: 'PUT',
+      url: '/v1/layouts/named',
+      payload: { name: 'ร้านใหม่', layout: readyLayout('named') },
+    });
+    expect(renamed.json().name).toBe('ร้านใหม่');
+
+    // 80 code point ได้ (emoji นอก BMP นับเป็น 1), 81 หรือช่องว่างล้วนไม่ได้
+    const emoji = '🍰'.repeat(80);
+    expect((await post(emoji, 'emoji')).json().name).toBe(emoji);
+    for (const name of ['🍰'.repeat(81), '   ', 42]) {
+      const response = await post(name, 'bad');
+      expect(response.statusCode, String(name)).toBe(400);
+      expect(response.json().error.code).toBe('INVALID_LAYOUT_SCHEMA');
+    }
   });
 
   it('returns 404 (never 403) for another user’s layout', async () => {
