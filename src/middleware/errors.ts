@@ -17,6 +17,9 @@ export type ErrorCode =
   | 'SHARE_REVOKED'
   | 'SHARE_EXPIRED'
   | 'RATE_LIMITED'
+  | 'OTP_INVALID'
+  | 'OTP_EXPIRED'
+  | 'OTP_ATTEMPTS_EXCEEDED'
   | 'INTERNAL_ERROR';
 
 export interface ErrorDetail {
@@ -27,6 +30,8 @@ export interface ErrorDetail {
 export interface ErrorExtras {
   details?: ErrorDetail[];
   retryAfter?: number;
+  /** คู่กับ OTP_INVALID */
+  attemptsLeft?: number;
   validation?: ValidationResult;
   issues?: ValidationIssue[];
 }

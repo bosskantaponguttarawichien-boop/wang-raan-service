@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { computeLayoutRevision } from '@bosskantaponguttarawichien-boop/wang-raan-core';
 import { readyLayout, warningLayout } from '../helpers/layouts.js';
+import { emailHash } from '../../src/modules/auth/email.js';
 import { createTestContext } from './harness.js';
 import type { TestContext } from './harness.js';
 
@@ -25,6 +26,13 @@ describe('account & PDPA (PostgreSQL)', () => {
     ctx.as(sub, { method: 'POST', url: '/v1/layouts', payload: { layout } });
   const createShare = async (sub: string, layoutId: string) =>
     (await ctx.as(sub, { method: 'POST', url: `/v1/layouts/${layoutId}/shares`, payload: {} })).json().shareKey;
+  const seedUser = (id: string, provider: string, name: string, email: string | null = null) =>
+    ctx.pool.query('INSERT INTO users (id, provider, name, email) VALUES ($1, $2, $3, $4)', [
+      id,
+      provider,
+      name,
+      email,
+    ]);
   const count = async (sql: string, params: unknown[] = []) =>
     (await ctx.pool.query<{ n: number }>(`SELECT count(*)::int AS n FROM ${sql}`, params)).rows[0]?.n;
 
@@ -36,53 +44,75 @@ describe('account & PDPA (PostgreSQL)', () => {
       expect(response.json().error.code).toBe('NOT_FOUND');
     });
 
-    it('upserts the profile, keeping omitted fields and clearing explicit nulls', async () => {
-      const created = await ctx.as(ALICE, {
-        method: 'PUT',
-        url: '/v1/me',
-        payload: { provider: 'google', name: 'Alice', email: 'alice@example.com', image: 'https://img.example/a.png' },
-      });
+    it('updates an existing profile only, keeping omitted fields and clearing explicit nulls', async () => {
+      await seedUser(ALICE, 'google', 'Alice');
       const updated = await ctx.as(ALICE, {
         method: 'PUT',
         url: '/v1/me',
-        payload: { provider: 'google', image: null },
+        payload: { email: 'alice@example.com', image: null },
       });
 
-      expect(created.statusCode).toBe(200);
+      expect(updated.statusCode).toBe(200);
       expect(updated.json()).toEqual({
         id: ALICE,
         provider: 'google',
         name: 'Alice',
         email: 'alice@example.com',
         image: null,
-        createdAt: created.json().createdAt,
+        createdAt: expect.any(String),
         updatedAt: expect.any(String),
       });
       expect((await ctx.as(ALICE, { url: '/v1/me' })).json()).toEqual(updated.json());
     });
 
-    it('validates the profile and ties provider to the token subject', async () => {
+    it('never creates an account: PUT for an unknown subject is 404', async () => {
+      const response = await ctx.as('usr-00000000-0000-4000-8000-000000000000', {
+        method: 'PUT',
+        url: '/v1/me',
+        payload: { name: 'Mallory' },
+      });
+
+      expect(response.statusCode).toBe(404);
+      expect(await count('users')).toBe(0);
+    });
+
+    it('validates the profile and rejects provider (set by the Backend at login)', async () => {
+      await seedUser(ALICE, 'google', 'Alice');
       const cases = [
-        { provider: 'line' },
-        { provider: 'google', email: 'not-an-email' },
-        { provider: 'google', image: 'not a url' },
-        { provider: 'google', name: 'x'.repeat(201) },
-        { provider: 'google', id: 'line-mallory' },
+        { provider: 'google' },
+        { email: 'not-an-email' },
+        { image: 'not a url' },
+        { name: 'x'.repeat(201) },
+        { id: 'line-mallory' },
         {},
       ];
 
       for (const payload of cases) {
         const response = await ctx.as(ALICE, { method: 'PUT', url: '/v1/me', payload });
-        expect(response.statusCode).toBe(400);
+        expect(response.statusCode, JSON.stringify(payload)).toBe(400);
         expect(response.json().error.code).toBe('INVALID_REQUEST');
       }
-      expect(await count('users')).toBe(0);
+      expect((await ctx.as(ALICE, { url: '/v1/me' })).json()).toMatchObject({ provider: 'google', name: 'Alice' });
     });
   });
 
   describe('DELETE /v1/me', () => {
     it('erases the profile and every piece of data tied to the user, and is idempotent', async () => {
-      await ctx.as(ALICE, { method: 'PUT', url: '/v1/me', payload: { provider: 'google', name: 'Alice' } });
+      await seedUser(ALICE, 'google', 'Alice', 'alice@example.com');
+      await ctx.pool.query(
+        `INSERT INTO identities (provider, provider_account_id, user_id, email, email_verified)
+         VALUES ('google', 'alice', $1, 'alice@example.com', true)`,
+        [ALICE],
+      );
+      const aliceHash = emailHash('alice@example.com');
+      await ctx.pool.query(
+        `INSERT INTO otp_codes (email_hash, code_hash, expires_at, attempts_left, last_requested_at)
+         VALUES ($1, $2, now() + interval '10 minutes', 5, now())`,
+        [aliceHash, 'f'.repeat(64)],
+      );
+      await ctx.pool.query(`INSERT INTO rate_limits (key, window_start, count) VALUES ($1, now(), 1)`, [
+        `otp:email:${aliceHash}`,
+      ]);
       await createLayout(ALICE, readyLayout());
       await createShare(ALICE, 'cafe-1');
       await ctx.pool.query(
@@ -104,13 +134,21 @@ describe('account & PDPA (PostgreSQL)', () => {
       expect(await count('share_links WHERE owner_id = $1', [ALICE])).toBe(0);
       expect(await count('contact_messages WHERE user_id = $1', [ALICE])).toBe(0);
       expect(await count('rate_limits WHERE key LIKE $1', [`%${ALICE}%`])).toBe(0);
+      expect(await count('identities WHERE user_id = $1', [ALICE])).toBe(0);
+      expect(await count('otp_codes')).toBe(0);
+      expect(await count('rate_limits WHERE key = $1', [`otp:email:${emailHash('alice@example.com')}`])).toBe(0);
       expect(await count('layouts WHERE owner_id = $1', ['google-bob'])).toBe(1);
     });
   });
 
   describe('GET /v1/me/export', () => {
     it('exports the profile, layouts, shares and contact messages', async () => {
-      await ctx.as(ALICE, { method: 'PUT', url: '/v1/me', payload: { provider: 'google', name: 'Alice' } });
+      await seedUser(ALICE, 'google', 'Alice');
+      await ctx.pool.query(
+        `INSERT INTO identities (provider, provider_account_id, user_id, email, email_verified)
+         VALUES ('google', 'alice', $1, 'alice@example.com', true)`,
+        [ALICE],
+      );
       await createLayout(ALICE, readyLayout());
       const shareKey = await createShare(ALICE, 'cafe-1');
       await ctx.pool.query(
@@ -122,8 +160,25 @@ describe('account & PDPA (PostgreSQL)', () => {
 
       expect(response.statusCode).toBe(200);
       const body = response.json();
-      expect(Object.keys(body).sort()).toEqual(['contactMessages', 'exportedAt', 'layouts', 'shares', 'user']);
+      expect(Object.keys(body).sort()).toEqual([
+        'contactMessages',
+        'exportedAt',
+        'identities',
+        'layouts',
+        'shares',
+        'user',
+      ]);
       expect(body.user).toMatchObject({ id: ALICE, name: 'Alice' });
+      expect(body.identities).toEqual([
+        {
+          provider: 'google',
+          providerAccountId: 'alice',
+          email: 'alice@example.com',
+          emailVerified: true,
+          createdAt: expect.any(String),
+          lastLoginAt: expect.any(String),
+        },
+      ]);
       expect(body.layouts).toHaveLength(1);
       expect(body.layouts[0].layout).toEqual(readyLayout());
       expect(body.shares).toEqual([expect.objectContaining({ shareKey, status: 'active' })]);
@@ -138,6 +193,7 @@ describe('account & PDPA (PostgreSQL)', () => {
       expect(response.statusCode).toBe(200);
       expect(response.json()).toMatchObject({
         user: { id: ALICE, provider: 'google', name: null },
+        identities: [],
         layouts: [],
         shares: [],
         contactMessages: [],

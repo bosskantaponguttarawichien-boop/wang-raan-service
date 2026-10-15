@@ -28,12 +28,13 @@ interface Scenario {
   rawBody?: string;
 }
 
-describe('OpenAPI v1.1.0 contract (PostgreSQL)', () => {
+describe('OpenAPI v1.3.0 contract (PostgreSQL)', () => {
   let ctx: TestContext;
   let shareKey = '';
   let revokedKey = '';
   let expiredKey = '';
   const exercised = new Set<number>();
+  const otpCodes = new Map<string, string>();
 
   async function send(scenario: Scenario): Promise<LightMyRequestResponse> {
     const options: InjectOptions = {
@@ -68,7 +69,13 @@ describe('OpenAPI v1.1.0 contract (PostgreSQL)', () => {
   }
 
   beforeAll(async () => {
-    ctx = await createTestContext();
+    ctx = await createTestContext({
+      mailer: {
+        async sendOtp(email, code) {
+          otpCodes.set(email, code);
+        },
+      },
+    });
     await ctx.reset();
 
     const post = (sub: string, url: string, payload: unknown) =>
@@ -137,6 +144,9 @@ describe('OpenAPI v1.1.0 contract (PostgreSQL)', () => {
     const S = '/v1/shares/{shareKey}';
     const P = '/v1/public/shares/{shareKey}';
     const C = '/v1/contact-messages';
+    const R = '/v1/auth/identities/resolve';
+    const OR = '/v1/auth/otp/request';
+    const OV = '/v1/auth/otp/verify';
     const scenarios: Scenario[] = [
       { name: 'health ok', method: 'GET', path: '/health', status: 200, sub: null },
       { name: 'list layouts', method: 'GET', path: L, status: 200 },
@@ -305,13 +315,20 @@ describe('OpenAPI v1.1.0 contract (PostgreSQL)', () => {
         path: '/v1/me',
         status: 200,
         payload: {
-          provider: 'google',
           name: 'n'.repeat(200),
           email: `${'e'.repeat(240)}@example.com`,
           image: `https://img.example/${'i'.repeat(2020)}`,
         },
       },
-      { name: 'upsert me invalid', method: 'PUT', path: '/v1/me', status: 400, payload: { provider: 'facebook' } },
+      { name: 'upsert me invalid', method: 'PUT', path: '/v1/me', status: 400, payload: { provider: 'google' } },
+      {
+        name: 'upsert me unknown user',
+        method: 'PUT',
+        path: '/v1/me',
+        status: 404,
+        sub: 'usr-00000000-0000-4000-8000-000000000000',
+        payload: { name: 'x' },
+      },
       { name: 'get me', method: 'GET', path: '/v1/me', status: 200 },
       { name: 'export me', method: 'GET', path: '/v1/me/export', status: 200 },
       {
@@ -329,9 +346,83 @@ describe('OpenAPI v1.1.0 contract (PostgreSQL)', () => {
         payload: { guestId: 'google-1' },
       },
       { name: 'delete me', method: 'DELETE', path: '/v1/me', status: 204 },
+      { name: 'resolve guest', method: 'POST', path: R, status: 200, sub: 'anonymous', payload: { provider: 'guest' } },
+      {
+        name: 'resolve google',
+        method: 'POST',
+        path: R,
+        status: 200,
+        sub: 'anonymous',
+        payload: {
+          provider: 'google',
+          providerAccountId: '1098765',
+          email: 'g@example.com',
+          emailVerified: true,
+          name: 'G',
+          image: 'https://img.example/g.png',
+        },
+      },
+      {
+        name: 'resolve email provider',
+        method: 'POST',
+        path: R,
+        status: 400,
+        sub: 'anonymous',
+        payload: { provider: 'email', providerAccountId: 'a@example.com', email: 'a@example.com', emailVerified: true },
+      },
+      {
+        name: 'otp request',
+        method: 'POST',
+        path: OR,
+        status: 200,
+        sub: 'anonymous',
+        payload: { email: 'o@example.com' },
+      },
+      {
+        name: 'otp request cooldown',
+        method: 'POST',
+        path: OR,
+        status: 429,
+        sub: 'anonymous',
+        payload: { email: 'o@example.com' },
+      },
+      {
+        name: 'otp request invalid',
+        method: 'POST',
+        path: OR,
+        status: 400,
+        sub: 'anonymous',
+        payload: { email: 'nope' },
+      },
+      {
+        name: 'otp verify expired',
+        method: 'POST',
+        path: OV,
+        status: 400,
+        sub: 'anonymous',
+        payload: { email: 'z@example.com', code: '123456' },
+      },
     ];
 
     for (const scenario of scenarios) await check(scenario);
+    await check({
+      name: 'otp verify',
+      method: 'POST',
+      path: OV,
+      status: 200,
+      sub: 'anonymous',
+      payload: { email: 'o@example.com', code: otpCodes.get('o@example.com') },
+    });
+    const withIdentity = (
+      await ctx.pool.query<{ user_id: string }>("SELECT user_id FROM identities WHERE provider = 'google'")
+    ).rows[0]!.user_id;
+    await check({
+      name: 'export with identities',
+      method: 'GET',
+      path: '/v1/me/export',
+      status: 200,
+      sub: withIdentity,
+    });
 
     // 429: ส่งจาก IP เดียวจนเกินโควตา
     for (let i = 0; i < 5; i += 1) {
@@ -359,8 +450,8 @@ describe('OpenAPI v1.1.0 contract (PostgreSQL)', () => {
     const template = readyLayout();
     await ctx.pool.query("INSERT INTO users (id, provider) VALUES ('google-full', 'google')");
     await ctx.pool.query(
-      `INSERT INTO layouts (owner_id, id, layout, validation)
-       SELECT 'google-full', 'bulk-' || n, $1::jsonb, $2::jsonb FROM generate_series(1, 200) AS n`,
+      `INSERT INTO layouts (owner_id, id, name, layout, validation)
+       SELECT 'google-full', 'bulk-' || n, 'bulk', $1::jsonb, $2::jsonb FROM generate_series(1, 200) AS n`,
       [JSON.stringify(template), JSON.stringify(validateLayout(template))],
     );
     await check({

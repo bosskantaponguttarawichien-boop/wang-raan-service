@@ -107,3 +107,12 @@
 ### Next Steps
 1. sync `contracts/openapi.yaml` เมื่อ repo หลัก merge สัญญา identities/OTP แล้ว
 2. ทำ `resolve` + กฎผูกบัญชีด้วยอีเมลที่ยืนยันแล้ว, แก้ `PUT /v1/me`, export/delete ให้ครอบคลุม identities
+
+## 2026-10-15 ICT — feat-014 เสร็จ: สัญญา v1.3.0 ครบ (branch `feat/identities-migration`)
+
+- endpoint ใหม่ทั้งหมดตามสัญญา v1.3.0 + ชื่อผัง + แบ่งหน้า — E2E ของ repo หลักผ่าน 90/90 กับ Backend นี้
+- ⚠️ ก่อน merge เข้า `main` (= deploy production ทันที):
+  1. ตั้ง `RESEND_API_KEY` + `MAIL_FROM` บน Railway (ไม่ตั้ง = ล็อกอินด้วยอีเมลไม่ได้ ตอบ 503) — โดเมนส่งเมลยังไม่ได้ตัดสิน
+  2. deploy คู่กับ FE PR #11: FE บน `main` ตอนนี้ยังเรียก `PUT /v1/me` พร้อม `provider` → จะได้ 400 (แผงบัญชีของ FE เก่าขึ้น error จนกว่า FE ใหม่จะ deploy)
+  3. migration 002 + 003 รันกับฐานข้อมูลจริงอัตโนมัติ (`preDeployCommand`)
+- FE CI job "E2E (Backend จริง)" ต้องตั้ง `OTP_TEST_CODE=123456` ตอนเปิด Backend (แก้ใน repo หลักแล้ว)

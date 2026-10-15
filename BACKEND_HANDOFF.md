@@ -84,7 +84,8 @@ export async function userFrom(request: Request): Promise<string | null> {
 
 กติกา:
 - token ไม่มี / ผิด / หมดอายุ → **401**
-- `sub = anonymous` ใช้ได้เฉพาะ endpoint ที่มี `x-allow-anonymous: true` (เปิดลิงก์แชร์, ฟอร์มติดต่อ) — ที่อื่นตอบ **401**
+- `sub = anonymous` ใช้ได้เฉพาะ endpoint ที่มี `x-allow-anonymous: true` (เปิดลิงก์แชร์, ฟอร์มติดต่อ, resolve, otp/request, otp/verify) — ที่อื่นตอบ **401**
+- id ผู้ใช้ Backend เป็นผู้ออก (v1.3.0): `usr-<uuid>` · `guest-<uuid>` · ผู้ใช้เดิม `<provider>-<id>` คง id เดิม
 - **ห้ามรับ id ผู้ใช้จาก body หรือ query** — ใช้ `sub` เท่านั้น
 
 ### Header อื่น ๆ
@@ -100,10 +101,10 @@ export async function userFrom(request: Request): Promise<string | null> {
 | Method | Path | ทำอะไร | สำเร็จ | anonymous |
 |---|---|---|---|---|
 | GET | `/health` | `{status: ok\|degraded, version, database?: ok\|unavailable}` ไม่ต้องมี token | 200 / 503 | — |
-| GET | `/v1/layouts` | `{layouts: LayoutSummary[]}` เรียง `updatedAt` ใหม่สุดก่อน | 200 | |
-| POST | `/v1/layouts` | body `{layout}` → `StoredLayout` | 201 | |
+| GET | `/v1/layouts` | `?limit=1–50 (24)&cursor=` → `{layouts: LayoutSummary[], nextCursor}` ใหม่สุดก่อน (cursor มีลายเซ็น ปลอม → 400) | 200 | |
+| POST | `/v1/layouts` | body `{name?, layout}` → `StoredLayout` (ไม่มีชื่อ = "ผังร้าน {กว้าง} × {ลึก} ม.") | 201 | |
 | GET | `/v1/layouts/{layoutId}` | → `StoredLayout` | 200 | |
-| PUT | `/v1/layouts/{layoutId}` | body `{layout}` บันทึกทับ (`createdAt` คงเดิม) | 200 | |
+| PUT | `/v1/layouts/{layoutId}` | body `{name?, layout}` บันทึกทับ (`createdAt` คงเดิม, ไม่ส่งชื่อ = ชื่อเดิม) | 200 | |
 | DELETE | `/v1/layouts/{layoutId}` | ลบผัง + revoke ลิงก์แชร์ของผังนั้น | 204 | |
 | GET | `/v1/layouts/{layoutId}/shares` | `{shares: ShareLink[]}` รวมที่ยกเลิก/หมดอายุ ใหม่สุดก่อน | 200 | |
 | POST | `/v1/layouts/{layoutId}/shares` | body `{expiresAt?}` → `ShareLink` (snapshot) | 201 | |
@@ -112,10 +113,13 @@ export async function userFrom(request: Request): Promise<string | null> {
 | GET | `/v1/public/shares/{shareKey}` | → `PublicShare` (**ห้ามมี id เจ้าของ**) | 200 | ✅ |
 | POST | `/v1/contact-messages` | body `{name, email, message}` → `{id, receivedAt}` | 202 | ✅ |
 | GET | `/v1/me` | → `User` (ไม่มี = 404) | 200 | |
-| PUT | `/v1/me` | upsert โปรไฟล์ (BFF เรียกทุกครั้งที่ล็อกอิน) → `User` | 200 | |
+| PUT | `/v1/me` | อัปเดตโปรไฟล์อย่างเดียว `{name?, email?, image?}` (ไม่มีบัญชี = 404, ไม่รับ provider) → `User` | 200 | |
 | DELETE | `/v1/me` | ลบบัญชี + ข้อมูลทั้งหมด (PDPA) เรียกซ้ำได้ | 204 | |
 | GET | `/v1/me/export` | → `AccountExport` (PDPA) | 200 | |
 | POST | `/v1/me/merge-guest` | body `{guestId}` → `{movedLayouts, movedShares, renamed[]}` | 200 | |
+| POST | `/v1/auth/identities/resolve` | Guest / OAuth → `{user, created}` (กติกาผูกบัญชีใน openapi.yaml) | 200 | ✅ |
+| POST | `/v1/auth/otp/request` | ส่งรหัส 6 หลักทางอีเมล → `{sent: true, expiresIn: 600}` (ไม่ตั้ง Resend ใน production → 503) | 200 | ✅ |
+| POST | `/v1/auth/otp/verify` | ตรวจรหัส → `{user, created}` | 200 | ✅ |
 
 ทุก endpoint (ยกเว้น `/health`) อาจตอบ 401, 429, 5xx ได้ — ดูรายละเอียด response ต่อ endpoint ใน `openapi.yaml`
 
