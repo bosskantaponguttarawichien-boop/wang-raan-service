@@ -138,3 +138,12 @@
 - QA: docker build ผ่าน; compose up → container healthy, ยิงคำขอแบบ BFF (JWT จริงผ่าน HTTP) ครบ flow me/layout/share/public/contact/delete; backup ไป S3-compatible (adobe/s3mock — MinIO ไม่มี image ให้ดึงแล้ว) สำเร็จ, retention ลบเฉพาะไฟล์เกิน 30 วัน, restore กลับ exit 0 และข้อมูลครบ, ขาด env → exit 64; ลบ container/volume/image ทดสอบแล้ว
 - ยังไม่ได้ทดสอบกับ Cloudflare R2 จริง (ไม่มี credentials) และยังไม่ได้ deploy บน Railway — `preDeployCommand`/build secret บน Railway ต้องยืนยันตอน deploy ครั้งแรก
 - README: หัวข้อ Deploy & Backup และวิธีกู้คืน; อัปเดตตาราง env
+
+## [2026-10-14 22:00] feat-013: Identities Schema Migration
+
+- `src/db/migrations/002-identities.ts`: เพิ่ม `email` ใน CHECK ของ users, ตาราง `identities` + index, backfill ผู้ใช้เดิมคนละแถว (`email_verified = false`, ไม่รวมอีเมลซ้ำ, ข้าม Guest และ id ที่ prefix ไม่ตรง provider)
+- down ไม่ลบข้อมูลผู้ใช้: ถ้ามีผู้ใช้ provider `email` แล้วจะล้มและ rollback
+- เทส integration `test/integration/migrations.test.ts` รัน 001 → insert ข้อมูลเดิม → 002 บน schema แยก; ตรวจ CHECK, cascade และ down
+- harness ของ integration test TRUNCATE `identities` ด้วย; อัปเดต DDL/ER ใน `architecture.md`
+- ยังไม่มี API — รอสัญญา identities/OTP จาก repo หลัก
+- QA: unit 58/58, integration 61/61, `make lint`, `make contract`, format ผ่าน

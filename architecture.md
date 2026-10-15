@@ -148,11 +148,21 @@ erDiagram
     USERS ||--o{ LAYOUTS : owns
     USERS ||--o{ SHARE_LINKS : owns
     USERS ||--o{ CONTACT_MESSAGES : sends
+    USERS ||--o{ IDENTITIES : "logs in with"
     LAYOUTS ||--o{ SHARE_LINKS : references
 
+    IDENTITIES {
+        text provider PK "google | line | github | email"
+        varchar provider_account_id PK "Max 255"
+        text user_id FK "References users(id)"
+        varchar email "normalize แล้ว, nullable"
+        boolean email_verified
+        timestamptz created_at
+        timestamptz last_login_at
+    }
     USERS {
         text id PK "guest-<uuid> | <provider>-<id>"
-        text provider "guest | google | line | github"
+        text provider "guest | google | line | github | email (วิธี login ล่าสุด)"
         varchar name "Max 200"
         varchar email "Max 254"
         varchar image "Max 2048"
@@ -203,7 +213,7 @@ erDiagram
 -- 1. Users Table
 CREATE TABLE users (
   id          text PRIMARY KEY,
-  provider    text NOT NULL CHECK (provider IN ('guest','google','line','github')),
+  provider    text NOT NULL CHECK (provider IN ('guest','google','line','github','email')),
   name        varchar(200),
   email       varchar(254),
   image       varchar(2048),
@@ -254,6 +264,22 @@ CREATE TABLE rate_limits (
   count        integer NOT NULL DEFAULT 0,
   PRIMARY KEY (key, window_start)
 );
+
+-- 6. Identities Table (migration 002) — วิธี login ที่ผูกกับบัญชี, Backend หาบัญชีจาก (provider, provider_account_id)
+--    email เก็บแบบ trim + ตัวพิมพ์เล็ก ใช้ผูกบัญชีเฉพาะแถวที่ email_verified; Guest ไม่มี identity
+--    backfill ผู้ใช้เดิม <provider>-<id> คนละแถว (email_verified = false, ไม่รวมบัญชีที่อีเมลซ้ำ)
+CREATE TABLE identities (
+  provider            text NOT NULL CHECK (provider IN ('google','line','github','email')),
+  provider_account_id varchar(255) NOT NULL CHECK (provider_account_id <> ''),
+  user_id             text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  email               varchar(254) CHECK (email = lower(btrim(email)) AND email <> ''),
+  email_verified      boolean NOT NULL DEFAULT false,
+  created_at          timestamptz NOT NULL DEFAULT now(),
+  last_login_at       timestamptz,
+  PRIMARY KEY (provider, provider_account_id)
+);
+CREATE INDEX identities_user ON identities (user_id);
+CREATE INDEX identities_verified_email ON identities (email) WHERE email_verified;
 ```
 
 ### การทำ Transaction พิเศษ (Atomic Workflows)

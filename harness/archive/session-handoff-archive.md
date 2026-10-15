@@ -46,3 +46,16 @@
 
 ### Next Steps
 1. เริ่ม **feat-002**: เชื่อมต่อ core package, Zod และ contract integration
+
+## 2026-10-10 17:24 ICT — feat-002 เสร็จ: Core Package & Contract Integration
+
+### Core & Dev
+- package `@bosskantaponguttarawichien-boop/wang-raan-core@1.0.0` ถูก publish และติดตั้งสำเร็จ พร้อม `zod@3.25.76`
+- `.npmrc` กำหนดเฉพาะ GitHub Packages registry scope; local development ใช้ credentials จาก `npm login`
+- เพิ่ม `src/services/validator.ts` เป็นจุดเดียวสำหรับ parse ด้วย shared Zod schema และคำนวณ `validateLayout()`
+
+### QA
+- ผ่าน `npm run build`, `make test` (4/4), `make lint` และ `make contract`
+
+### Next Step
+1. เริ่ม **feat-003**: PostgreSQL infrastructure และ migration architecture
