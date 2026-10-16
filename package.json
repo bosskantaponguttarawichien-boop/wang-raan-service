@@ -22,7 +22,7 @@
     "test:integration": "scripts/with-test-db.sh vitest run --config vitest.integration.config.ts"
   },
   "dependencies": {
-    "@bosskantaponguttarawichien-boop/wang-raan-core": "^1.0.0",
+    "@bosskantaponguttarawichien-boop/wang-raan-core": "^1.1.0",
     "fastify": "^5.6.0",
     "jose": "^6.2.12",
     "pg": "^8.23.1",
