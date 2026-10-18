@@ -122,9 +122,10 @@ describe("StoreLayout ตรงกับ StoreLayoutSchema (Zod)", () => {
 
   it.each<[string, (l: Loose) => void]>([
     ["ยังไม่มีทางเข้า (entrance: null)", (l) => (l.entrance = null)],
+    ["ยังไม่มีประตูครัว (kitchenDoor: null)", (l) => (l.kitchenDoor = null)],
     ["โต๊ะไม่มีเก้าอี้ (chairIds: [])", (l) => (firstOf(l, "table").chairIds = [])],
     ["โต๊ะไม่มี preset", (l) => delete firstOf(l, "table").preset],
-    ["วัตถุออกนอกร้านชั่วคราว (x ติดลบ)", (l) => (firstOf(l, "kitchen").x = -1)],
+    ["วัตถุออกนอกร้านชั่วคราว (x ติดลบ)", (l) => (firstOf(l, "counter").x = -1)],
     ["ไม่มีวัตถุเลย", (l) => (l.objects = [])],
   ])("ยอมรับทั้งสองฝั่ง: %s", (_, mutate) => {
     const value = mutated(mutate);
@@ -141,30 +142,39 @@ describe("StoreLayout ตรงกับ StoreLayoutSchema (Zod)", () => {
     ["version = 0", (l) => (l.version = 0)],
     ["version ไม่ใช่จำนวนเต็ม", (l) => (l.version = 1.5)],
     ["ฟิลด์เกินที่ root", (l) => (l.name = "ร้านกาแฟ")],
-    ["ฟิลด์เกินที่วัตถุ", (l) => (firstOf(l, "kitchen").color = "red")],
+    ["ฟิลด์เกินที่วัตถุ", (l) => (firstOf(l, "table").color = "red")],
     ["ชนิดวัตถุ shelf (ไม่มีใน V1)", (l) => (firstOf(l, "counter").type = "shelf")],
     ["เก้าอี้ไม่มี tableId", (l) => delete firstOf(l, "chair").tableId],
     ["โต๊ะไม่มี chairIds", (l) => delete firstOf(l, "table").chairIds],
     ["preset ไม่รู้จัก", (l) => (firstOf(l, "table").preset = "table-6-seats")],
     ["เก้าอี้เกิน 16 ตัวต่อโต๊ะ", (l) => (firstOf(l, "table").chairIds = Array.from({ length: 17 }, (_, i) => `c${i}`))],
-    ["ขนาดวัตถุเป็น 0", (l) => (firstOf(l, "kitchen").width = 0)],
-    ["ขนาดวัตถุเกิน 30 ม.", (l) => (firstOf(l, "kitchen").depth = 31)],
-    ["พิกัดไกลเกินขอบเขต", (l) => (firstOf(l, "kitchen").x = 61)],
-    ["พิกัดติดลบเกิน -30", (l) => (firstOf(l, "kitchen").y = -31)],
+    ["ขนาดวัตถุเป็น 0", (l) => (firstOf(l, "counter").width = 0)],
+    ["ขนาดวัตถุเกิน 30 ม.", (l) => (firstOf(l, "counter").depth = 31)],
+    ["พิกัดไกลเกินขอบเขต", (l) => (firstOf(l, "counter").x = 61)],
+    ["พิกัดติดลบเกิน -30", (l) => (firstOf(l, "counter").y = -31)],
     ["ทางเข้าแคบกว่า 0.6 ม.", (l) => (l.entrance.width = 0.5)],
     ["ทางเข้ากว้างเกิน 3 ม.", (l) => (l.entrance.width = 3.25)],
     ["ผนังทางเข้าไม่รู้จัก", (l) => (l.entrance.wall = "up")],
+    ["ประตูครัวแคบกว่า 0.6 ม.", (l) => (l.kitchenDoor.width = 0.5)],
+    ["ประตูครัวกว้างเกิน 3 ม.", (l) => (l.kitchenDoor.width = 3.25)],
+    ["ผนังประตูครัวไม่รู้จัก", (l) => (l.kitchenDoor.wall = "up")],
     ["id ว่าง", (l) => (l.id = "")],
     ["id ยาวเกิน 128", (l) => (l.id = "x".repeat(129))],
-    ["วัตถุเกิน 1000 ชิ้น", (l) => (l.objects = Array.from({ length: 1001 }, () => firstOf(l, "kitchen")))],
+    ["วัตถุเกิน 1000 ชิ้น", (l) => (l.objects = Array.from({ length: 1001 }, () => firstOf(l, "counter")))],
   ])("ปฏิเสธทั้งสองฝั่ง: %s", (_, mutate) => {
     const value = mutated(mutate);
     expect(zodAccepts(value)).toBe(false);
     expect(openapi(value)).toBe(false);
   });
 
+  it("ผังเก่าที่มีกล่องครัว: Zod preprocess แปลงเป็นประตูครัวได้ แต่ OpenAPI ปฏิเสธ (BFF แปลงก่อนส่ง Backend)", () => {
+    const value = mutated((l) => (firstOf(l, "counter").type = "kitchen"));
+    expect(zodAccepts(value)).toBe(true);
+    expect(openapi(value)).toBe(false);
+  });
+
   it("ช่องว่างที่รู้อยู่แล้ว: id วัตถุซ้ำ — Zod ปฏิเสธ แต่ JSON Schema ตรวจไม่ได้ (Backend ต้องใช้ StoreLayoutSchema)", () => {
-    const value = mutated((l) => (firstOf(l, "counter").id = firstOf(l, "kitchen").id));
+    const value = mutated((l) => (firstOf(l, "counter").id = firstOf(l, "table").id));
     expect(zodAccepts(value)).toBe(false);
     expect(openapi(value)).toBe(true);
   });

@@ -9,8 +9,8 @@ export function readyLayout(id = 'cafe-1'): StoreLayout {
     width: 8,
     depth: 8,
     entrance: { id: 'entrance-01', wall: 'south', position: 3.5, width: 1.2 },
+    kitchenDoor: { id: 'kitchen-01', wall: 'north', position: 0.5, width: 0.9 },
     objects: [
-      { id: 'kitchen-01', type: 'kitchen', x: 0, y: 0, width: 2, depth: 1.5, rotation: 0 },
       { id: 'counter-01', type: 'counter', x: 5, y: 0, width: 2.4, depth: 0.7, rotation: 0 },
       {
         id: 'table-01',
@@ -43,5 +43,15 @@ export function warningLayout(id = 'cafe-warning'): StoreLayout {
       ...layout.objects,
       { id: 'table-02', type: 'table', x: 5, y: 4, width: 0.8, depth: 0.8, rotation: 0, chairIds: [] },
     ],
+  };
+}
+
+/** ผังรุ่น core 1.x ที่ครัวเป็นกล่องบนพื้น (ก่อน kitchenDoor) — ยังพบได้ในข้อมูลที่บันทึกไว้แล้ว */
+export function legacyKitchenLayout(id = 'cafe-legacy'): Record<string, unknown> {
+  const layout: Record<string, unknown> & { objects: unknown[] } = { ...readyLayout(id) };
+  delete layout.kitchenDoor;
+  return {
+    ...layout,
+    objects: [{ id: 'kitchen-01', type: 'kitchen', x: 0, y: 0, width: 2, depth: 1.5, rotation: 0 }, ...layout.objects],
   };
 }

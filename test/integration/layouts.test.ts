@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { blockedLayout, readyLayout, warningLayout } from '../helpers/layouts.js';
+import { blockedLayout, legacyKitchenLayout, readyLayout, warningLayout } from '../helpers/layouts.js';
 import { createTestContext } from './harness.js';
 import type { TestContext } from './harness.js';
 
@@ -147,7 +147,7 @@ describe('layouts CRUD (PostgreSQL)', () => {
           name: 'ผังร้าน 8 × 8 ม.',
           width: 8,
           depth: 8,
-          objectCount: 6,
+          objectCount: 5,
           status: 'warning',
           updatedAt: expect.any(String),
           layout: warningLayout('second'),
@@ -157,7 +157,7 @@ describe('layouts CRUD (PostgreSQL)', () => {
           name: 'ผังร้าน 8 × 8 ม.',
           width: 8,
           depth: 8,
-          objectCount: 5,
+          objectCount: 4,
           status: 'ready',
           updatedAt: expect.any(String),
           layout: readyLayout('first'),
@@ -165,6 +165,21 @@ describe('layouts CRUD (PostgreSQL)', () => {
       ],
       nextCursor: null,
     });
+  });
+
+  it('returns layouts stored by core 1.x (floor kitchen) in the current kitchenDoor shape', async () => {
+    await create(ALICE, readyLayout('legacy'));
+    await ctx.pool.query('UPDATE layouts SET layout = $1 WHERE id = $2', [
+      JSON.stringify(legacyKitchenLayout('legacy')),
+      'legacy',
+    ]);
+
+    const list = (await ctx.as(ALICE, { url: '/v1/layouts' })).json();
+    expect(list.layouts[0]).toMatchObject({ id: 'legacy', objectCount: 4, layout: readyLayout('legacy') });
+
+    const one = await ctx.as(ALICE, { url: '/v1/layouts/legacy' });
+    expect(one.statusCode).toBe(200);
+    expect(one.json().layout).toEqual(readyLayout('legacy'));
   });
 
   it('pages newest first with an opaque cursor until every layout is listed exactly once', async () => {

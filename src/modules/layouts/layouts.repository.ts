@@ -1,4 +1,5 @@
 import type { Pool, PoolClient } from 'pg';
+import { migrateLayout } from '@bosskantaponguttarawichien-boop/wang-raan-core';
 import type { StoreLayout, ValidationResult } from '@bosskantaponguttarawichien-boop/wang-raan-core';
 import type { LayoutSummary, StoredLayout } from './layouts.schemas.js';
 
@@ -16,7 +17,8 @@ interface LayoutRow {
 export function toStoredLayout(row: LayoutRow): StoredLayout {
   return {
     name: row.name,
-    layout: row.layout,
+    // ผังที่บันทึกด้วย core 1.x (ครัวเป็นกล่องบนพื้น) → รูปแบบปัจจุบัน (kitchenDoor) ก่อนส่งออก
+    layout: migrateLayout(row.layout),
     validation: row.validation,
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
@@ -71,16 +73,19 @@ export async function listLayoutSummaries(
   const rows = result.rows.slice(0, page.limit);
   const last = rows[rows.length - 1];
   return {
-    layouts: rows.map((row) => ({
-      id: row.id,
-      name: row.name,
-      width: row.layout.width,
-      depth: row.layout.depth,
-      objectCount: row.object_count,
-      status: row.status,
-      updatedAt: row.updated_at.toISOString(),
-      layout: row.layout,
-    })),
+    layouts: rows.map((row) => {
+      const layout = migrateLayout(row.layout);
+      return {
+        id: row.id,
+        name: row.name,
+        width: layout.width,
+        depth: layout.depth,
+        objectCount: layout === row.layout ? row.object_count : layout.objects.length,
+        status: row.status,
+        updatedAt: row.updated_at.toISOString(),
+        layout,
+      };
+    }),
     next: result.rows.length > page.limit && last ? { updatedAtMicros: last.updated_us, id: last.id } : null,
   };
 }
