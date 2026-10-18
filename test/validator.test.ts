@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { StoreLayout } from '@bosskantaponguttarawichien-boop/wang-raan-core';
 import { parseAndValidateLayout } from '../src/services/validator.js';
+import { legacyKitchenLayout } from './helpers/layouts.js';
 
 const layout: StoreLayout = {
   id: 'test-layout',
@@ -9,6 +10,7 @@ const layout: StoreLayout = {
   width: 4,
   depth: 4,
   entrance: null,
+  kitchenDoor: null,
   objects: [],
 };
 
@@ -21,6 +23,17 @@ describe('layout validator', () => {
       expect(result.layout).toEqual(layout);
       expect(result.validation.status).toBe('blocked');
       expect(result.validation.issues.some((issue) => issue.severity === 'blocked')).toBe(true);
+    }
+  });
+
+  it('accepts a core 1.x layout with a floor kitchen and migrates it to a kitchen door', () => {
+    const result = parseAndValidateLayout({ layout: legacyKitchenLayout() });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.layout.kitchenDoor).toEqual({ id: 'kitchen-01', wall: 'north', position: 0.5, width: 0.9 });
+      expect(result.layout.objects.some((object) => (object.type as string) === 'kitchen')).toBe(false);
+      expect(result.validation.status).toBe('ready');
     }
   });
 

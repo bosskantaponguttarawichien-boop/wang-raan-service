@@ -674,18 +674,6 @@ components:
     Rotation:
       type: integer
       enum: [0, 90, 180, 270]
-    Kitchen:
-      type: object
-      additionalProperties: false
-      required: [id, type, x, y, width, depth, rotation]
-      properties:
-        id: { $ref: "#/components/schemas/Id" }
-        type: { const: kitchen }
-        x: { $ref: "#/components/schemas/Coordinate" }
-        y: { $ref: "#/components/schemas/Coordinate" }
-        width: { $ref: "#/components/schemas/Size" }
-        depth: { $ref: "#/components/schemas/Size" }
-        rotation: { $ref: "#/components/schemas/Rotation" }
     Counter:
       type: object
       additionalProperties: false
@@ -735,14 +723,12 @@ components:
         tableId: { $ref: "#/components/schemas/Id" }
     LayoutObject:
       oneOf:
-        - $ref: "#/components/schemas/Kitchen"
         - $ref: "#/components/schemas/Counter"
         - $ref: "#/components/schemas/Table"
         - $ref: "#/components/schemas/Chair"
       discriminator:
         propertyName: type
         mapping:
-          kitchen: "#/components/schemas/Kitchen"
           counter: "#/components/schemas/Counter"
           table: "#/components/schemas/Table"
           chair: "#/components/schemas/Chair"
@@ -768,7 +754,7 @@ components:
         กฎที่ JSON Schema ตรวจไม่ได้: id ของวัตถุต้องไม่ซ้ำกัน (ใช้ StoreLayoutSchema จาก @bosskantaponguttarawichien-boop/wang-raan-core)
       type: object
       additionalProperties: false
-      required: [id, version, units, width, depth, entrance, objects]
+      required: [id, version, units, width, depth, entrance, kitchenDoor, objects]
       properties:
         id: { $ref: "#/components/schemas/Id" }
         version: { type: integer, minimum: 1 }
@@ -777,6 +763,11 @@ components:
         depth: { $ref: "#/components/schemas/RoomDimension" }
         entrance:
           description: null = ยังไม่กำหนดทางเข้า (Completeness รายงานเป็น Blocked)
+          oneOf:
+            - $ref: "#/components/schemas/Entrance"
+            - type: "null"
+        kitchenDoor:
+          description: ประตูครัวบนผนัง (ครัวเป็นห้องแยก) — null = ยังไม่กำหนด (Completeness รายงานเป็น Blocked)
           oneOf:
             - $ref: "#/components/schemas/Entrance"
             - type: "null"

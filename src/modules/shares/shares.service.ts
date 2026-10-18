@@ -1,4 +1,5 @@
 import type { Pool } from 'pg';
+import { migrateLayout } from '@bosskantaponguttarawichien-boop/wang-raan-core';
 import { withTransaction } from '../../db/transaction.js';
 import { AppError, notFound } from '../../middleware/errors.js';
 import { generateShareKey, isShareKey } from '../../services/share-generator.js';
@@ -123,7 +124,8 @@ export class SharesService {
 
     // ประกอบ response ทีละฟิลด์ — ไม่ส่งต่อแถวจาก DB ตรง ๆ เพื่อไม่ให้ฟิลด์อื่นหลุดออกไป
     return {
-      layout: row.layout,
+      // snapshot ที่แชร์ไว้ด้วย core 1.x → รูปแบบปัจจุบัน (kitchenDoor)
+      layout: migrateLayout(row.layout),
       validation: row.validation,
       createdAt: row.created_at.toISOString(),
       expiresAt: row.expires_at?.toISOString() ?? null,
